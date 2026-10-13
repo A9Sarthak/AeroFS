@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Dynamic Virtual Block Device disk images (auto-generated on boot)
+*.bin
+*.img
+*.iso
+aerofs_production_disk.bin
+aerofs_demo_viva.bin
+aerofs_cli_disk.bin
+test_aerofs_disk.bin
+test_check_bitrot.bin
+
+# Python Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# University rosters and reference documents
+*.xlsx
+*.pdf
+all_projects.txt
+
+# OS system files
+.DS_Store
+Thumbs.db
+desktop.ini

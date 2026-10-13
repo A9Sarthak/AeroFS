@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AeroFS — Advanced OS Storage & CoW Deduplication Subsystem</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <style>
+    :root {
+      --bg-primary: #080c16;
+      --bg-card: rgba(15, 23, 42, 0.75);
+      --bg-card-hover: rgba(30, 41, 59, 0.85);
+      --border-subtle: rgba(51, 65, 85, 0.6);
+      --border-accent: rgba(56, 189, 248, 0.4);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      
+      --color-free: #1e293b;
+      --color-meta: #38bdf8;
+      --color-unique: #10b981;
+      --color-dedup: #8b5cf6;
+      --color-corrupt: #ef4444;
+      
+      --accent-glow: 0 0 25px rgba(56, 189, 248, 0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.08) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.08) 0px, transparent 50%);
+      color: var(--text-main);
+      font-family: 'Outfit', sans-serif;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-badge {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #0284c7, #8b5cf6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 20px;
+      box-shadow: 0 4px 20px rgba(2, 132, 199, 0.4);
+    }
+
+    .brand h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .brand p {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 10px #10b981;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+
+    /* Metric Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 18px 20px;
+      transition: all 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: var(--border-accent);
+      transform: translateY(-2px);
+      box-shadow: var(--accent-glow);
+    }
+
+    .card-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .card-value {
+      font-size: 28px;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-main);
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .card-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .badge-green { color: #34d399; font-size: 14px; }
+    .badge-purple { color: #a78bfa; font-size: 14px; }
+    .badge-cyan { color: #38bdf8; font-size: 14px; }
+
+    /* Control Bar */
+    .controls-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 24px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button, .btn {
+      background: rgba(30, 41, 59, 0.8);
+      color: #f8fafc;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 9px 16px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    button:hover, .btn:hover {
+      background: rgba(51, 65, 85, 0.9);
+      border-color: var(--border-accent);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      border: none;
+      box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #0369a1, #1d4ed8);
+    }
+
+    .btn-purple {
+      background: linear-gradient(135deg, #7c3aed, #9333ea);
+      border: none;
+      box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
+    }
+    .btn-purple:hover {
+      background: linear-gradient(135deg, #6d28d9, #7e22ce);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.3);
+    }
+
+    /* Main Grid & Panels */
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      .main-layout { grid-template-columns: 1fr; }
+    }
+
+    /* Disk Map Grid */
+    .block-grid-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 20px;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .panel-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .legend {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .legend-box {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+
+    .disk-grid {
+      display: grid;
+      grid-template-columns: repeat(32, 1fr);
+      gap: 3px;
+      background: rgba(10, 15, 29, 0.6);
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(51, 65, 85, 0.4);
+      max-height: 480px;
+      overflow-y: auto;
+    }
+
+    .block-cell {
+      aspect-ratio: 1;
+      border-radius: 2px;
+      background-color: var(--color-free);
+      transition: transform 0.15s ease, filter 0.15s ease;
+      cursor: pointer;
+    }
+
+    .block-cell:hover {
+      transform: scale(1.8);
+      filter: brightness(1.3);
+      z-index: 10;
+    }
+
+    .block-cell.state-0 { background-color: var(--color-free); }
+    .block-cell.state-1 { background-color: var(--color-meta); box-shadow: 0 0 5px rgba(56, 189, 248, 0.4); }
+    .block-cell.state-2 { background-color: var(--color-unique); }
+    .block-cell.state-3 { background-color: var(--color-dedup); box-shadow: 0 0 6px rgba(139, 92, 246, 0.5); }
+    .block-cell.state-4 { background-color: var(--color-corrupt); animation: blink 1s infinite; }
+
+    @keyframes blink {
+      50% { opacity: 0.3; }
+    }
+
+    /* Side Panels */
+    .side-panels {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .table-container {
+      max-height: 230px;
+      overflow-y: auto;
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    th {
+      background: rgba(30, 41, 59, 0.6);
+      padding: 10px 12px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+      position: sticky;
+      top: 0;
+    }
+
+    td {
+      padding: 9px 12px;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+    }
+
+    tr:hover td {
+      background: rgba(51, 65, 85, 0.2);
+    }
+
+    .tag {
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .tag-blue { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+    .tag-purple { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
+    .tag-green { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .tag-red { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+    /* Modal / Form */
+    .form-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    input[type="text"], textarea {
+      flex: 1;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: #fff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: var(--color-meta);
+    }
+
+    /* Toast Notification */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid var(--border-accent);
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 13px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Modal Overlays & Inspectors */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(4, 7, 15, 0.85);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+    .modal-overlay.active {
+      display: flex;
+    }
+    .modal-card {
+      background: #0f172a;
+      border: 1px solid var(--border-accent);
+      border-radius: 18px;
+      max-width: 680px;
+      width: 92%;
+      max-height: 85vh;
+      overflow-y: auto;
+      padding: 24px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 22px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .modal-close:hover {
+      color: #fff;
+    }
+    .modal-field {
+      margin-bottom: 12px;
+    }
+    .modal-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .modal-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #f8fafc;
+      word-break: break-all;
+    }
+    .merkle-level-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+      background: rgba(30, 41, 59, 0.4);
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(51, 65, 85, 0.4);
+    }
+    .merkle-node-chip {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #38bdf8;
+      display: inline-block;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    .merkle-node-chip.root {
+      border-color: #a78bfa;
+      color: #c084fc;
+      background: rgba(139, 92, 246, 0.15);
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <div class="logo-badge">⚡</div>
+        <div>
+          <h1>AeroFS Architecture Console</h1>
+          <p>Next-Gen Copy-on-Write Storage Subsystem with Content-Addressable Deduplication & Merkle Trees</p>
+        </div>
+      </div>
+      <div class="status-pill">
+        <div class="status-dot"></div>
+        <span>Storage Subsystem Online (4KB Blocks)</span>
+      </div>
+    </header>
+
+    <!-- Top Telemetry Metrics -->
+    <div class="metrics-grid">
+      <div class="card">
+        <div class="card-title">Disk Storage Capacity</div>
+        <div class="card-value" id="val-capacity">16.0 <span style="font-size: 14px;">MB</span></div>
+        <div class="card-sub" id="val-blocks-allocated">0 / 4096 blocks allocated (0%)</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Storage Space Saved</div>
+        <div class="card-value" id="val-saved-bytes">0 <span style="font-size: 14px;">KB</span></div>
+        <div class="card-sub"><span class="badge-green" id="val-savings-pct">0.0%</span> reduction via CAS dedup</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Deduplication Ratio</div>
+        <div class="card-value" id="val-dedup-ratio" style="color: #a78bfa;">1.00x</div>
+        <div class="card-sub" id="val-dedup-hits">0 duplicate chunks intercepted</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Active Inodes & Snapshots</div>
+        <div class="card-value" id="val-inodes-count">0 <span style="font-size: 14px;">files</span></div>
+        <div class="card-sub" id="val-snapshots-count">0 point-in-time snapshots</div>
+      </div>
+    </div>
+
+    <!-- Quick Action Controls -->
+    <div class="controls-bar">
+      <div class="btn-group">
+        <button class="btn-primary" onclick="generateDemoWorkload()">🚀 Run Demo Workload</button>
+        <button class="btn-purple" onclick="promptCreateSnapshot()">📸 Create Snapshot</button>
+        <button onclick="runMerkleScrub()">🛡️ Run Merkle Scrub</button>
+        <button class="btn-primary" style="background: linear-gradient(135deg, #059669, #10b981);" onclick="runSelfHeal()">✨ Self-Heal Bit-Rot</button>
+        <button class="btn-danger" onclick="injectBitRot()">💥 Inject Bit-Rot</button>
+      </div>
+      <div style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+        <span>Live Telemetry Polling:</span>
+        <span class="tag tag-green">⚡ 1s Live Sync</span>
+      </div>
+    </div>
+
+    <!-- Main Layout: Visual Block Map + Inodes/Snapshots -->
+    <div class="main-layout">
+      <!-- 1,024-Block Disk Map -->
+      <div class="block-grid-container">
+        <div class="panel-header">
+          <div class="panel-title">Physical Disk Allocation Map (First 1,024 Blocks)</div>
+          <span style="font-size: 12px; color: var(--text-muted);">Hover block for details</span>
+        </div>
+        
+        <div class="legend">
+          <div class="legend-item"><div class="legend-box" style="background: var(--color-free);"></div> Free</div>
+          <div class="legend-item"><div class="legend-box" style="background: var(--color-meta);"></div> Superblock/Metadata</div>
+          <div class="legend-item"><div class="legend-box" style="background: var(--color-unique);"></div> Unique Data</div>
+          <div class="legend-item"><div class="legend-box" style="background: var(--color-dedup);"></div> Deduplicated (Ref > 1)</div>
+          <div class="legend-item"><div class="legend-box" style="background: var(--color-corrupt);"></div> Corrupted (Bit-Rot)</div>
+        </div>
+
+        <div class="disk-grid" id="diskGrid">
+          <!-- 1024 dynamic block cells populated by JS -->
+        </div>
+      </div>
+
+      <!-- Side Panels: Files & Snapshots -->
+      <div class="side-panels">
+        <!-- Files Explorer -->
+        <div class="card">
+          <div class="panel-header">
+            <div class="panel-title">Filesystem Inodes</div>
+            <button style="padding: 4px 10px; font-size: 11px;" onclick="toggleFileForm()">+ Add File</button>
+          </div>
+
+          <!-- Quick Text File Creation -->
+          <div id="fileForm" style="display: none; margin-bottom: 12px; background: rgba(30, 41, 59, 0.4); padding: 10px; border-radius: 8px;">
+            <input type="text" id="newFilename" placeholder="filename.txt (e.g. kernel.c)" style="width: 100%; margin-bottom: 6px;">
+            <textarea id="newContent" placeholder="Enter file content..." rows="3" style="width: 100%; margin-bottom: 6px;"></textarea>
+            <button class="btn-primary" style="padding: 5px 12px; font-size: 11px;" onclick="submitNewFile()">Write to AeroFS</button>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Filename</th>
+                  <th>Size</th>
+                  <th>Blocks</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="filesTableBody">
+                <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No files in filesystem.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Snapshots & Merkle Audits -->
+        <div class="card">
+          <div class="panel-header">
+            <div class="panel-title">Point-in-Time Snapshots (Zero-Copy)</div>
+          </div>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Snapshot</th>
+                  <th>Files</th>
+                  <th>Created</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="snapshotsTableBody">
+                <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No snapshots saved.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- File Inspection Modal with Merkle Tree -->
+  <div class="modal-overlay" id="fileModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalFileTitle" style="font-size: 18px; font-weight: 700; color: #38bdf8;">File Inode & Merkle Audit</h3>
+        <button class="modal-close" onclick="closeModals()">&times;</button>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Integrity Status</div>
+        <div id="modalFileHealth" style="font-weight: 600; font-size: 14px;">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Physical Block Sequence</div>
+        <div class="modal-val" id="modalFileBlocks">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Root Merkle Hash (SHA-256)</div>
+        <div class="modal-val" id="modalFileMerkle" style="color: #a78bfa;">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Hierarchical Merkle Tree Structure</div>
+        <div id="modalMerkleLevels"></div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Content Preview</div>
+        <pre id="modalFilePreview" style="background: rgba(10, 15, 29, 0.8); padding: 12px; border-radius: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #94a3b8; max-height: 140px; overflow-y: auto; white-space: pre-wrap;"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Physical Block Inspector Modal -->
+  <div class="modal-overlay" id="blockModal">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-header">
+        <h3 id="modalBlockTitle" style="font-size: 18px; font-weight: 700; color: #38bdf8;">Sector Details</h3>
+        <button class="modal-close" onclick="closeModals()">&times;</button>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Allocation & Status</div>
+        <div class="modal-val" id="modalBlockState">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Reference Count (Deduplication)</div>
+        <div class="modal-val" id="modalBlockRef" style="color: #a78bfa; font-size: 16px; font-weight: bold;">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Expected CAS SHA-256 Digest</div>
+        <div class="modal-val" id="modalBlockExpectedHash">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Actual Disk SHA-256 Digest</div>
+        <div class="modal-val" id="modalBlockActualHash">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Referenced by Files</div>
+        <div class="modal-val" id="modalBlockOwners">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">Included in Snapshots</div>
+        <div class="modal-val" id="modalBlockSnaps">-</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast">Notification Message</div>
+
+  <script>
+    // Initialize 1024 cells in disk grid with inspector click handler
+    const diskGrid = document.getElementById('diskGrid');
+    for (let i = 0; i < 1024; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'block-cell state-0';
+      cell.id = `block-${i}`;
+      cell.title = `Block #${i}: Free (Click to inspect)`;
+      cell.onclick = () => inspectBlock(i);
+      diskGrid.appendChild(cell);
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3500);
+    }
+
+    function toggleFileForm() {
+      const form = document.getElementById('fileForm');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function fetchTelemetry() {
+      try {
+        const res = await fetch('/api/telemetry');
+        const data = await res.json();
+        updateUI(data);
+      } catch (err) {
+        console.error("Telemetry fetch error:", err);
+      }
+    }
+
+    function updateUI(data) {
+      // Metrics
+      const capMB = (data.disk.capacity_bytes / (1024 * 1024)).toFixed(1);
+      document.getElementById('val-capacity').innerHTML = `${capMB} <span style="font-size: 14px;">MB</span>`;
+      document.getElementById('val-blocks-allocated').textContent = 
+        `${data.disk.allocated_blocks} / ${data.disk.total_blocks} blocks (${data.disk.utilization_percent}%)`;
+      
+      const savedKB = (data.dedup.bytes_saved / 1024).toFixed(1);
+      document.getElementById('val-saved-bytes').innerHTML = `${savedKB} <span style="font-size: 14px;">KB</span>`;
+      document.getElementById('val-savings-pct').textContent = `${data.dedup.savings_percent}%`;
+      
+      document.getElementById('val-dedup-ratio').textContent = data.dedup.dedup_ratio;
+      document.getElementById('val-dedup-hits').textContent = `${data.dedup.dedup_hits} duplicate chunks eliminated`;
+      
+      document.getElementById('val-inodes-count').innerHTML = `${data.file_count} <span style="font-size: 14px;">files</span>`;
+      document.getElementById('val-snapshots-count').textContent = `${data.snapshot_count} point-in-time snapshots`;
+
+      // Update 1024 Grid Blocks
+      const states = data.grid_blocks || [];
+      const stateLabels = ["Free", "Superblock/Metadata", "Unique Data", "Deduplicated (Shared)", "Corrupted (Bit-Rot)"];
+      for (let i = 0; i < states.length; i++) {
+        const cell = document.getElementById(`block-${i}`);
+        if (cell) {
+          const st = states[i];
+          cell.className = `block-cell state-${st}`;
+          cell.title = `Block #${i}: ${stateLabels[st]}`;
+        }
+      }
+
+      // Update Files Table
+      const fBody = document.getElementById('filesTableBody');
+      if (!data.files || data.files.length === 0) {
+        fBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No files stored.</td></tr>`;
+      } else {
+        fBody.innerHTML = data.files.map(f => `
+          <tr>
+            <td style="font-weight: 600; color: #38bdf8;">${f.name}</td>
+            <td>${(f.size / 1024).toFixed(2)} KB</td>
+            <td><span class="tag tag-blue">${f.num_blocks} blks</span></td>
+            <td style="display: flex; gap: 6px;">
+              <button style="padding: 3px 8px; font-size: 11px; background: rgba(56, 189, 248, 0.2); color: #38bdf8;" onclick="inspectFile('${f.name}')">Inspect</button>
+              <button style="padding: 3px 8px; font-size: 11px; background: rgba(239, 68, 68, 0.2);" onclick="deleteFile('${f.name}')">Delete</button>
+            </td>
+          </tr>
+        `).join('');
+      }
+
+      // Update Snapshots Table
+      const sBody = document.getElementById('snapshotsTableBody');
+      if (!data.snapshots || data.snapshots.length === 0) {
+        sBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No snapshots saved.</td></tr>`;
+      } else {
+        sBody.innerHTML = data.snapshots.map(s => `
+          <tr>
+            <td style="font-weight: 600; color: #a78bfa;">${s.name}</td>
+            <td><span class="tag tag-purple">${s.file_count} files</span></td>
+            <td style="font-size: 11px; color: var(--text-muted);">${s.created_at.split(' ')[1]}</td>
+            <td style="display: flex; gap: 4px;">
+              <button style="padding: 3px 6px; font-size: 10px; background: rgba(16, 185, 129, 0.2);" onclick="restoreSnapshot('${s.name}')">Restore</button>
+              <button style="padding: 3px 6px; font-size: 10px; background: rgba(239, 68, 68, 0.2);" onclick="deleteSnapshot('${s.name}')">Del</button>
+            </td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    async function generateDemoWorkload() {
+      showToast("Executing simulated OS workload with clones & snapshots...");
+      const res = await fetch('/api/simulate/workload', { method: 'POST' });
+      const data = await res.json();
+      showToast(data.message);
+      fetchTelemetry();
+    }
+
+    async function promptCreateSnapshot() {
+      const name = prompt("Enter snapshot name (e.g. baseline_v1):", `snap_${Date.now().toString().slice(-4)}`);
+      if (!name) return;
+      const res = await fetch('/api/snapshots/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`Instant snapshot '${name}' captured in <1ms!`);
+        fetchTelemetry();
+      } else {
+        showToast(`Error: ${data.detail}`);
+      }
+    }
+
+    async function restoreSnapshot(name) {
+      if (!confirm(`Roll back filesystem state to snapshot '${name}'?`)) return;
+      const res = await fetch('/api/snapshots/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      const data = await res.json();
+      showToast(data.message);
+      fetchTelemetry();
+    }
+
+    async function deleteSnapshot(name) {
+      await fetch(`/api/snapshots/${name}`, { method: 'DELETE' });
+      showToast(`Snapshot '${name}' deleted.`);
+      fetchTelemetry();
+    }
+
+    async function deleteFile(name) {
+      await fetch(`/api/files/${name}`, { method: 'DELETE' });
+      showToast(`File '${name}' deleted.`);
+      fetchTelemetry();
+    }
+
+    async function submitNewFile() {
+      const filename = document.getElementById('newFilename').value.trim();
+      const content = document.getElementById('newContent').value;
+      if (!filename) { alert("Please provide a filename."); return; }
+
+      const res = await fetch('/api/files/create_text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, content })
+      });
+      const data = await res.json();
+      showToast(`Wrote '${filename}' (${data.blocks_used} blocks, ${data.deduplicated_chunks} deduped)`);
+      document.getElementById('newFilename').value = '';
+      document.getElementById('newContent').value = '';
+      toggleFileForm();
+      fetchTelemetry();
+    }
+
+    async function injectBitRot() {
+      try {
+        const res = await fetch('/api/simulate/bitrot', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(`⚠️ ${data.message} (Marked RED in map)`);
+          alert(`💥 Bit-Rot Injected into Sector #${data.corrupted_block}!\n\nNotice that Sector #${data.corrupted_block} turned RED and is blinking in the map.\nNow click 'Run Merkle Scrub' to see the integrity audit!`);
+          fetchTelemetry();
+        } else {
+          showToast(`Error: ${data.detail}`);
+          alert(`⚠️ ${data.detail}`);
+        }
+      } catch (err) {
+        alert("Error injecting bit-rot: " + err);
+      }
+    }
+
+    async function runMerkleScrub() {
+      showToast("Running Merkle-Tree cryptographic audit...");
+      const res = await fetch('/api/merkle/scrub', { method: 'POST' });
+      const data = await res.json();
+      if (data.status === "HEALTHY") {
+        alert(`✅ Merkle Scrub Complete: All ${data.files_audited} files verified. Zero bit-rot detected!`);
+      } else {
+        const details = (data.details || []).filter(d => d.status === "CORRUPTED");
+        let detailMsg = details.map(d => `• ${d.file}: Damaged Sector(s) [${d.corrupted_blocks.join(', ')}]`).join('\n');
+        alert(`🚨 Merkle Scrub Alert: Found ${data.corrupted_blocks_total} corrupted block(s)!\n\n${detailMsg}\n\nFilesystem state flagged DEGRADED.\nClick 'Self-Heal Bit-Rot' to repair!`);
+      }
+      fetchTelemetry();
+    }
+
+    function closeModals() {
+      document.getElementById('fileModal').classList.remove('active');
+      document.getElementById('blockModal').classList.remove('active');
+    }
+
+    async function inspectFile(filename) {
+      try {
+        const res = await fetch(`/api/files/inspect/${encodeURIComponent(filename)}`);
+        if (!res.ok) {
+          showToast(`Error inspecting file: ${res.statusText}`);
+          return;
+        }
+        const data = await res.json();
+        document.getElementById('modalFileTitle').textContent = `Inode #${data.inode.inode_id}: ${data.inode.name}`;
+        
+        const healthEl = document.getElementById('modalFileHealth');
+        if (data.is_healthy) {
+          healthEl.innerHTML = `<span style="color: #34d399;">✅ HEALTHY — Merkle root matches leaf digests byte-for-byte</span>`;
+        } else {
+          healthEl.innerHTML = `<span style="color: #ef4444;">🚨 CORRUPTED — Bit-rot detected in block(s): ${data.corrupted_blocks.join(', ')}</span>`;
+        }
+
+        document.getElementById('modalFileBlocks').textContent = `[${data.inode.block_ids.join(', ')}] (${data.inode.num_blocks} physical 4KB blocks)`;
+        document.getElementById('modalFileMerkle').textContent = data.inode.merkle_root;
+
+        // Render Merkle Levels
+        const levelsContainer = document.getElementById('modalMerkleLevels');
+        levelsContainer.innerHTML = '';
+        if (data.tree && data.tree.levels) {
+          data.tree.levels.forEach((lvl, idx) => {
+            const row = document.createElement('div');
+            row.className = 'merkle-level-row';
+            const isRoot = (idx === data.tree.levels.length - 1);
+            const title = isRoot ? 'Tree Root Level' : `Level ${idx} Nodes`;
+            row.innerHTML = `<div class="modal-label" style="margin-bottom: 2px;">${title}</div><div>` + 
+              lvl.map(n => `<span class="merkle-node-chip ${isRoot ? 'root' : ''}" title="${n.hash}">${n.short_hash}</span>`).join('') +
+              `</div>`;
+            levelsContainer.prepend(row); // Root on top
+          });
+        }
+
+        document.getElementById('modalFilePreview').textContent = data.preview || '[Empty Content]';
+        document.getElementById('fileModal').classList.add('active');
+      } catch (err) {
+        showToast(`Failed to load file inspection: ${err}`);
+      }
+    }
+
+    async function inspectBlock(blockId) {
+      try {
+        const res = await fetch(`/api/blocks/${blockId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById('modalBlockTitle').textContent = `Physical Sector #${blockId} Telemetry`;
+        
+        let stateStr = "Free / Unallocated";
+        if (data.is_metadata) stateStr = "Superblock / System Bitmap (Reserved)";
+        else if (data.is_corrupted) stateStr = "⚠️ CORRUPTED (Simulated Hardware Bit-Rot)";
+        else if (data.is_allocated) stateStr = data.refcount > 1 ? "Shared Deduplicated Block (CoW CAS)" : "Unique File Sector";
+
+        document.getElementById('modalBlockState').innerHTML = data.is_corrupted ? 
+          `<span style="color: #ef4444; font-weight: bold;">${stateStr}</span>` : stateStr;
+        
+        document.getElementById('modalBlockRef').textContent = `${data.refcount} references`;
+        document.getElementById('modalBlockExpectedHash').textContent = data.expected_hash || 'N/A';
+        document.getElementById('modalBlockActualHash').textContent = data.actual_hash || 'N/A';
+        document.getElementById('modalBlockOwners').textContent = (data.referencing_files && data.referencing_files.length) ? 
+          data.referencing_files.join(', ') : 'None (Or orphaned block)';
+        document.getElementById('modalBlockSnaps').textContent = (data.referencing_snapshots && data.referencing_snapshots.length) ? 
+          data.referencing_snapshots.join(', ') : 'None';
+
+        document.getElementById('blockModal').classList.add('active');
+      } catch (err) {
+        console.error("Block inspect error:", err);
+      }
+    }
+
+    async function runSelfHeal() {
+      showToast("Executing autonomous storage self-healing...");
+      const res = await fetch('/api/merkle/heal', { method: 'POST' });
+      const data = await res.json();
+      if (data.repaired_count > 0) {
+        alert(`✨ Self-Healing Complete: Successfully repaired ${data.repaired_count} damaged block(s) [${data.repaired_blocks.join(', ')}]. Filesystem restored to ${data.post_heal_status}!`);
+      } else {
+        alert("✨ Subsystem Healthy: No damaged sectors found to heal.");
+      }
+      fetchTelemetry();
+    }
+
+    // Close modals on clicking overlay outside card
+    window.onclick = function(event) {
+      if (event.target === document.getElementById('fileModal')) closeModals();
+      if (event.target === document.getElementById('blockModal')) closeModals();
+    };
+
+    // Initial load + periodic polling every 1 second
+    fetchTelemetry();
+    setInterval(fetchTelemetry, 1000);
+  </script>
+</body>
+</html>
