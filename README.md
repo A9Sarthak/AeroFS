@@ -54,9 +54,26 @@ Traditional operating system file systems (such as FAT32 and standard EXT2) rely
 
 ---
 
-## 🚀 Quickstart & Execution
+## 🚀 Installation & Quickstart
 
-### 1. Launch Live Unified Dual-Mode (⚡ Best for Viva & Presentation)
+### 1. Clone & Install Dependencies
+```bash
+# Clone the repository
+git clone https://github.com/A9Sarthak/AeroFS.git
+cd AeroFS
+
+# (Optional) Create and activate virtual environment
+python -m venv venv
+# Windows:
+.\venv\Scripts\activate
+# Linux/macOS:
+source venv/bin/activate
+
+# Install required dependencies
+pip install -r requirements.txt
+```
+
+### 2. Launch Live Unified Dual-Mode (⚡ Best for Viva & Presentation)
 ```powershell
 python main.py --live
 ```
