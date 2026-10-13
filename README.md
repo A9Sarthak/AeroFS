@@ -141,6 +141,50 @@ python main.py --test
 
 ---
 
+## 🌐 Interactive Web Dashboard Walkthrough (How to Test Every Feature)
+
+When you run `python main.py --live` or `python main.py` and open `http://127.0.0.1:8000`, here is how to click, test, and present every feature on the visual interface:
+
+### 1. 🚀 Test Smart Deduplication (CAS) & Space Savings
+* **How to access:** Click the blue **"🚀 Run Demo Workload"** button in the top action bar.
+* **What to watch:**
+  * **Top Metrics Cards:** **Storage Space Saved** jumps up to $90\%+$, and **Deduplication Ratio** rises to $2\times\text{–}16\times$.
+  * **1,024-Block Disk Map:** Watch physical sectors turn **Purple (`[S]` Shared)**, demonstrating that identical files share the exact same physical sectors with 0 redundant storage.
+
+### 2. 📝 Create & Edit Custom Files (Test Copy-on-Write)
+* **How to access:** In the **"Filesystem Inodes"** table on the right, click **"+ Add File"**, enter a filename (e.g., `notes.txt`) and content, then click **"Save to AeroFS"**.
+* **What to test:** Create two separate files with the exact same content. Notice the blocks turn **Purple** immediately as AeroFS detects the matching SHA-256 fingerprint.
+
+### 3. 📸 Create an Instant Zero-Copy Snapshot ($O(1)$)
+* **How to access:** Click the purple **"📸 Create Snapshot"** button in the top bar. Enter a name (e.g., `backup_v1`) and press **OK**.
+* **What to watch:** The snapshot freezes in **under 1 millisecond** ($< 0.4\text{ ms}$) and appears in the **"Point-in-Time Snapshots"** table. No extra physical data blocks are allocated ($O(1)$ pointer duplication).
+
+### 4. ⏪ Time-Machine Snapshot Restore (Rollback)
+* **How to access:** Delete or modify any file in the **Filesystem Inodes** panel. Then, find your snapshot in the **"Point-in-Time Snapshots"** table and click the green **"Restore"** button.
+* **What happens:** The filesystem rolls back instantly to that exact historical moment, restoring all deleted or modified files.
+
+### 5. 💥 Inject Silent Bit-Rot (Simulate Hardware Decay)
+* **How to access:** Click the red **"💥 Inject Bit-Rot"** button in the top bar.
+* **What to watch:** AeroFS flips bits in an allocated block to simulate magnetic/silicon decay. On the 1,024-grid, that sector starts **blinking red ⚠️**, and a toast notification flags the damaged sector.
+
+### 6. 🛡️ Run Cryptographic Merkle Scrub (Integrity Audit)
+* **How to access:** Click the **"🛡️ Run Merkle Scrub"** button in the top bar.
+* **What happens:** AeroFS recalculates the SHA-256 tree over all sectors, compares roots against the stored Merkle Tree, and pinpoints the corrupted sector with 100% precision.
+
+### 7. ✨ Autonomous Storage Self-Healing
+* **How to access:** Click the emerald green **"✨ Self-Heal Bit-Rot"** button in the top bar.
+* **What happens:** The self-healing engine retrieves clean verified bytes from historical snapshot extents and recovery cache, repairs the sector on disk, and turns the **blinking red cell back to healthy Green/Purple**.
+
+### 8. 🌳 Inspect File Merkle Trees & Inode Extents
+* **How to access:** In the **"Filesystem Inodes"** table, click the blue **"Inspect"** button next to any file (e.g. `kernel_core.c`).
+* **What opens:** A modal displaying the hierarchical Merkle Tree branches (Level 0, Level 1, Merkle Root), cryptographic health status, physical sector list, and text preview.
+
+### 9. 🔬 Deep Sector Hex & Reference Inspector
+* **How to access:** Click on **ANY individual square/cell** in the 1,024-Block Disk Map grid.
+* **What opens:** Detailed sector telemetry showing physical Block ID, allocation state, exact reference count (`Ref: 3`), expected vs. actual SHA-256 hash digests, and referencing inodes.
+
+---
+
 ## 📊 Benchmark Results
 
 | Benchmark Metric | Traditional File System | AeroFS (CoW + CAS) | Advantage |
