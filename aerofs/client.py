@@ -156,6 +156,8 @@ class AeroFSRemoteClient:
         res = requests.get(f"{self.base_url}/api/files/read/{filename}", timeout=5)
         if res.status_code == 404:
             raise FileNotFoundError(f"File '{filename}' not found in AeroFS.")
+        if res.status_code == 500:
+            raise IOError(f"AeroFS remote read error (EIO): {res.text}")
         res.raise_for_status()
         content_type = res.headers.get("content-type", "")
         if "application/json" in content_type:

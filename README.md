@@ -137,7 +137,7 @@ python main.py --benchmark
 ```powershell
 python main.py --test
 ```
-* Runs 11 exhaustive automated test suites verifying Block Allocation, CAS Deduplication, Copy-on-Write Snapshots, Merkle Bit-Rot audits, Tree Structures, Sector Telemetry, Self-Healing, and Real-Time Network Sync.
+* Runs **139 exhaustive automated tests** across 6 test suites verifying Block Allocation, CAS Deduplication, Copy-on-Write Snapshots, Merkle Bit-Rot audits, Tree Structures, Sector Telemetry, Two-Tier Self-Healing, Crash Resilience & Metadata Recovery, and Real-Time Network Sync.
 
 ---
 
@@ -206,3 +206,9 @@ When you run `python main.py --live` or `python main.py` and open `http://127.0.
 
 **Q3: How does the Merkle Tree detect 'Bit-Rot'?**  
 > *"Bit-rot refers to silent data decay caused by magnetic or semiconductor degradation where the OS read returns corrupted bytes without throwing an I/O error. AeroFS constructs a hierarchical binary Merkle tree over all leaf block hashes. When a scrub occurs, AeroFS re-reads physical blocks, reconstructs the tree, and compares the root against the recorded inode root hash. Any single-bit modification causes an avalanche effect in the hash tree, pin-pointing the exact damaged block."*
+
+**Q4: How does Two-Tier Verified Self-Healing work when a corrupted block is discovered?**  
+> *"When Merkle integrity scrub detects silent bit-rot, AeroFS triggers an autonomous two-tier recovery workflow: Tier 1 searches the in-memory recovery cache populated at write time. If the cache entry was evicted or absent, Tier 2 searches the point-in-time snapshot extent store (physically independent byte copies saved at snapshot creation). In both tiers, candidate block bytes must cryptographically match the recorded SHA-256 leaf hash before writing back to disk. Once restored, the Merkle tree and leaf hashes are automatically re-anchored on all referencing inodes."*
+
+**Q5: How does AeroFS ensure metadata persistence across process reboots?**  
+> *"While physical 4KB block sectors and the allocation bitmap reside in the binary container file, higher-level metadata (inodes, CAS hash indexes, reference counts, snapshot maps, extent stores, and recovery caches) is persisted atomically via `MetadataJournal` sidecars using atomic rename (`.tmp` -> `.journal.json`), eliminating torn writes and enabling clean recovery upon restart."*

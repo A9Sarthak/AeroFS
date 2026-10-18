@@ -17,12 +17,14 @@ TEST_DISK_PATH = "test_aerofs_disk.bin"
 
 @pytest.fixture(autouse=True)
 def cleanup():
-    """Ensures test disk binary is cleaned up before and after tests."""
-    if os.path.exists(TEST_DISK_PATH):
-        os.remove(TEST_DISK_PATH)
+    """Ensures test disk binary and journal are cleaned up before and after tests."""
+    for p in [TEST_DISK_PATH, TEST_DISK_PATH.replace(".bin", ".journal.json")]:
+        if os.path.exists(p):
+            os.remove(p)
     yield
-    if os.path.exists(TEST_DISK_PATH):
-        os.remove(TEST_DISK_PATH)
+    for p in [TEST_DISK_PATH, TEST_DISK_PATH.replace(".bin", ".journal.json")]:
+        if os.path.exists(p):
+            os.remove(p)
 
 
 def test_virtual_block_device():

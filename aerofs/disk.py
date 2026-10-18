@@ -65,11 +65,14 @@ class VirtualBlockDevice:
         
         if not os.path.exists(disk_path) and format_if_missing:
             self.format_disk()
+            self.is_new_disk = True
         else:
             self.open_disk()
+            self.is_new_disk = False
 
     def format_disk(self) -> None:
         """Initializes a blank virtual disk image file and formats superblock and bitmap."""
+        self.is_new_disk = True
         with open(self.disk_path, "wb") as f:
             f.truncate(self.total_capacity_bytes)
 
@@ -142,23 +145,33 @@ class VirtualBlockDevice:
             return self.allocation_bitmap[block_id] == 1
         return False
 
-    def inject_bit_rot(self, block_id: int) -> None:
+    def inject_bit_rot(self, block_id: int, num_corrupted_bytes: int = 16) -> None:
         """
         Simulates physical bit-rot or storage corruption on a specific block.
-        Corrupts random bytes inside the block to test Merkle-tree validation.
+        Corrupts random bytes at random positions throughout the block, making
+        the simulation realistic rather than always hitting the same offset.
+
+        Args:
+            block_id:            The physical block to corrupt.
+            num_corrupted_bytes: Number of distinct byte positions to flip.
+                                 Defaults to 16 for a modest but detectable corruption.
         """
+        import random
         if not self.is_block_allocated(block_id):
             raise ValueError(f"Cannot inject bit-rot into unallocated block {block_id}")
-        
+
         raw_data = bytearray(self.read_block(block_id))
-        # Flip bytes in the block
-        for i in range(min(16, len(raw_data))):
-            raw_data[i] ^= 0xFF
-        
+        # Choose random byte positions spread across the entire block
+        positions = random.sample(range(len(raw_data)), min(num_corrupted_bytes, len(raw_data)))
+        for pos in positions:
+            # XOR with a non-zero value to guarantee the byte actually changes
+            flip_mask = random.randint(1, 255)
+            raw_data[pos] ^= flip_mask
+
         with open(self.disk_path, "r+b") as f:
             f.seek(block_id * self.block_size)
             f.write(bytes(raw_data))
-        
+
         self.corrupted_blocks.add(block_id)
 
     def repair_block(self, block_id: int, clean_data: bytes) -> None:
