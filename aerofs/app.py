@@ -11,13 +11,21 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .cow_fs import AeroFileSystem
+from .cow_fs import AeroFileSystem, IntegrityError
 
 app = FastAPI(title="AeroFS Operating System Storage Subsystem", version="1.0.0")
 
 # Initialize global AeroFS instance (16 MB = 4096 blocks)
-DISK_FILE = "aerofs_production_disk.bin"
+DISK_FILE = os.getenv("AEROFS_DISK_PATH", "aerofs_production_disk.bin")
 fs = AeroFileSystem(disk_path=DISK_FILE, total_blocks=4096)
+
+def reset_app_filesystem(disk_path: Optional[str] = None):
+    """Reconfigures or resets the global fs object cleanly for tests."""
+    global fs, DISK_FILE
+    if disk_path:
+        DISK_FILE = disk_path
+    fs = AeroFileSystem(disk_path=DISK_FILE, total_blocks=4096)
+    fs.format()
 
 # Ensure baseline clean files exist on startup so dashboard is pre-populated
 if not fs.files:
@@ -111,6 +119,8 @@ async def read_file_content(filename: str):
             return Response(content=data, media_type="application/octet-stream")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"File '{filename}' not found.")
+    except (IOError, IntegrityError) as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/api/files/{filename}")
@@ -178,9 +188,28 @@ async def run_merkle_scrub():
 
 @app.post("/api/merkle/heal")
 async def self_heal_filesystem():
-    """Runs the self-healing engine to detect and repair corrupted blocks."""
+    """Runs the self-healing engine to detect and repair corrupted blocks.
+    Returns per-block heal records including recovery source (cache vs snapshot)."""
     report = fs.self_heal_all()
     return report
+
+
+@app.get("/api/merkle/heal_log")
+async def get_heal_log():
+    """Returns the full chronological audit trail of all self-heal events since startup."""
+    return {"heal_events": fs.get_heal_log(), "total_events": len(fs.scrubber.heal_log)}
+
+
+@app.get("/api/merkle/proof/{filename}/{block_index}")
+async def get_merkle_proof(filename: str, block_index: int):
+    """Generates a cryptographic Merkle inclusion proof for a specific block in a file."""
+    try:
+        proof = fs.get_merkle_proof(filename, block_index)
+        return proof
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"File '{filename}' not found.")
+    except IndexError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/simulate/bitrot")
@@ -228,14 +257,15 @@ async def simulate_bit_rot(req: Optional[BitrotRequest] = None):
 @app.post("/api/format")
 async def format_filesystem():
     """Formats the virtual disk and resets all filesystem state."""
-    fs.dev.format_disk()
-    fs.files.clear()
-    fs.snapshots.clear()
-    fs.dedup.block_refcount.clear()
-    fs.dedup.cas_index.clear()
-    fs.recovery_cache.clear()
-    fs.next_inode_id = 1
+    fs.format()
     return {"status": "success", "message": "Filesystem formatted cleanly."}
+
+
+@app.post("/api/test/reset")
+async def test_reset_filesystem():
+    """Test-only endpoint to wipe and cleanly reset filesystem state between tests."""
+    fs.format()
+    return {"status": "success", "message": "Test reset complete."}
 
 
 @app.post("/api/simulate/workload")

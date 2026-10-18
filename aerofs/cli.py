@@ -8,7 +8,7 @@ import sys
 import time
 import shlex
 from typing import Optional, Any
-from .cow_fs import AeroFileSystem
+from .cow_fs import AeroFileSystem, IntegrityError
 from .client import AeroFSRemoteClient, check_server_available
 from .benchmark import run_benchmarks
 
@@ -190,6 +190,9 @@ def run_interactive_cli(disk_path: str = "aerofs_cli_disk.bin", server_url: Opti
                     print(f"{Colors.CYAN}--- End of File ---{Colors.RESET}\n")
                 except FileNotFoundError:
                     print(f"{Colors.RED}Error: File '{filename}' not found.{Colors.RESET}")
+                except (IOError, IntegrityError) as e:
+                    print(f"{Colors.RED}[EIO] Read refused — unrecoverable integrity failure: {e}{Colors.RESET}")
+
 
             elif cmd == "write":
                 if len(args) < 2:

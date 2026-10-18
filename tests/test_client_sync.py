@@ -22,6 +22,10 @@ TEST_URL = f"http://127.0.0.1:{TEST_PORT}"
 @pytest.fixture(scope="module", autouse=True)
 def run_test_server():
     """Boots an isolated test server instance for end-to-end client testing."""
+    import requests
+    from aerofs.app import reset_app_filesystem
+    reset_app_filesystem()
+
     config = uvicorn.Config(app, host="127.0.0.1", port=TEST_PORT, log_level="error")
     server = uvicorn.Server(config)
     t = threading.Thread(target=server.run, daemon=True)
@@ -35,6 +39,7 @@ def run_test_server():
         time.sleep(0.1)
 
     assert check_server_available(TEST_URL), "Test server failed to start"
+    requests.post(f"{TEST_URL}/api/format")
     yield
     server.should_exit = True
     time.sleep(0.2)

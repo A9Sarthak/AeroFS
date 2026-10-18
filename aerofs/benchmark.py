@@ -54,18 +54,26 @@ def run_benchmarks():
     w2_stats = fs.dedup.get_stats()
     print(f"      Cumulative Physical Blocks: {w2_stats['physical_unique_blocks']} (Total Hits: {w2_stats['dedup_hits']})")
 
-    # Workload 3: Snapshot Creation Latency Comparison
-    print("\n[3/3] Executing Workload 3: Snapshot Performance Benchmark...")
-    # Traditional copy time simulation (simulating deep disk copy of 100MB directory)
-    simulated_trad_snap_ms = 125.4 # Average 100MB copy time on fast SSD
+    # Risk 4 fix: Measure real filesystem copy latency instead of hardcoding 125.4 ms
+    import shutil, tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_bench = os.path.join(tmpdir, "trad_bench_src.bin")
+        dst_bench = os.path.join(tmpdir, "trad_bench_dst.bin")
+        total_data = b"".join(fs.read_file(f) for f in fs.files)
+        with open(src_bench, "wb") as f:
+            f.write(total_data if total_data else (b"X" * 1024 * 1024))
+        trad_start = time.perf_counter()
+        shutil.copy2(src_bench, dst_bench)
+        trad_end = time.perf_counter()
+        measured_trad_snap_ms = max(0.01, (trad_end - trad_start) * 1000.0)
     
     start_t = time.perf_counter()
     fs.create_snapshot("benchmark_zero_copy_snap")
     end_t = time.perf_counter()
     aerofs_snap_ms = (end_t - start_t) * 1000.0
     print(f"      AeroFS O(1) Zero-Copy Snapshot: {aerofs_snap_ms:.3f} ms")
-    print(f"      Traditional Full-Copy Snapshot: {simulated_trad_snap_ms:.1f} ms")
-    print(f"      Speedup: {simulated_trad_snap_ms / max(0.001, aerofs_snap_ms):.1f}x Faster!")
+    print(f"      Traditional Full-Copy Snapshot: {measured_trad_snap_ms:.3f} ms (Measured OS Copy)")
+    print(f"      Speedup: {measured_trad_snap_ms / max(0.001, aerofs_snap_ms):.1f}x Faster!")
 
     # Generate Matplotlib Comparison Graphs
     print("\n[+] Generating Publication-Quality Benchmark Visualizations...")
@@ -109,8 +117,8 @@ def run_benchmarks():
 
     # Chart 2: Snapshot Latency Comparison
     fig2, ax2 = plt.subplots(figsize=(6, 4.5))
-    methods = ['Traditional Copy (100MB)', 'AeroFS Zero-Copy Snap']
-    latencies = [simulated_trad_snap_ms, aerofs_snap_ms]
+    methods = ['Traditional Copy (OS Ext4/tmpfs)', 'AeroFS Zero-Copy Snap']
+    latencies = [measured_trad_snap_ms, aerofs_snap_ms]
     colors = ['#ef4444', '#8b5cf6']
 
     bars = ax2.bar(methods, latencies, color=colors, width=0.45)
@@ -131,9 +139,10 @@ def run_benchmarks():
     plt.close()
     print(f"      [OK] Saved: {chart2_path}")
 
-    # Clean up benchmark disk
-    if os.path.exists(BENCH_DISK_PATH):
-        os.remove(BENCH_DISK_PATH)
+    # Clean up benchmark disk and journal
+    for p in [BENCH_DISK_PATH, BENCH_DISK_PATH.replace(".bin", ".journal.json")]:
+        if os.path.exists(p):
+            os.remove(p)
 
     print("\n" + "=" * 70)
     print("    BENCHMARK SUMMARY REPORT FOR VIVA / PRESENTATION")
