@@ -3,20 +3,26 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Testing caches
+# Testing caches & coverage
 .pytest_cache/
 .coverage
 htmlcov/
+.coverage.*
 
-# Dynamic Virtual Block Device disk images (auto-generated on boot)
+# Dynamic Virtual Block Device disk images & journals (auto-generated)
 *.bin
 *.img
 *.iso
+*.journal.json
 aerofs_production_disk.bin
 aerofs_demo_viva.bin
 aerofs_cli_disk.bin
 test_aerofs_disk.bin
 test_check_bitrot.bin
+
+# Temporary benchmark / simulation files
+*.tmp
+*.bak
 
 # Python Virtual Environments
 .env
@@ -25,10 +31,30 @@ env/
 venv/
 ENV/
 
+# Node / Frontend dependencies & build artifacts
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+frontend/.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
 # University rosters and reference documents
 *.xlsx
 *.pdf
 all_projects.txt
+
+# Editor and IDE configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # OS system files
 .DS_Store
