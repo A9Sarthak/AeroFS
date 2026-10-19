@@ -5,15 +5,26 @@ Provides REST endpoints for filesystem operations, live block monitoring, and si
 
 import os
 import random
+import time
 from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .cow_fs import AeroFileSystem, IntegrityError
 
 app = FastAPI(title="AeroFS Operating System Storage Subsystem", version="1.0.0")
+
+# CORS for React dev server
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Initialize global AeroFS instance (16 MB = 4096 blocks)
 DISK_FILE = os.getenv("AEROFS_DISK_PATH", "aerofs_production_disk.bin")
@@ -52,6 +63,126 @@ class TextFileRequest(BaseModel):
 
 class BitrotRequest(BaseModel):
     block_id: Optional[int] = None
+
+
+class DuplicateRequest(BaseModel):
+    source_filename: str
+    dest_filename: str
+
+
+class BenchmarkRequest(BaseModel):
+    workload: str = "standard"  # standard | large | dedup_heavy
+
+
+@app.get("/api/health")
+async def health_check():
+    """Returns backend liveness and filesystem status."""
+    return {
+        "ok": True,
+        "status": "connected",
+        "disk_path": DISK_FILE,
+        "total_blocks": fs.dev.total_blocks,
+        "block_size": fs.dev.block_size,
+        "version": "1.0.0"
+    }
+
+
+@app.get("/api/files")
+async def list_files():
+    """Returns list of all active files in AeroFS."""
+    return {"files": fs.list_files(), "count": len(fs.files)}
+
+
+@app.get("/api/snapshots")
+async def list_snapshots():
+    """Returns list of all snapshots."""
+    return {"snapshots": fs.list_snapshots(), "count": len(fs.snapshots)}
+
+
+@app.post("/api/files/{filename}/duplicate")
+async def duplicate_file(filename: str, req: DuplicateRequest):
+    """Duplicates a file to a new name (demonstrates CAS dedup sharing)."""
+    if filename not in fs.files:
+        raise HTTPException(status_code=404, detail=f"Source file '{filename}' not found.")
+    try:
+        source_data = fs.read_file(filename, verify_integrity=False)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    pre_blocks = set(range(fs.dev.total_blocks))
+    inode, dedup_count = fs.write_file(req.dest_filename, source_data)
+    return {
+        "status": "success",
+        "source": filename,
+        "destination": req.dest_filename,
+        "filename": req.dest_filename,
+        "inode_id": inode.inode_id,
+        "size": inode.size,
+        "block_ids": inode.block_ids,
+        "deduplicated_chunks": dedup_count,
+        "merkle_root": inode.merkle_root,
+        "message": f"Duplicated '{filename}' → '{req.dest_filename}'. {dedup_count} blocks reused via CAS."
+    }
+
+
+@app.post("/api/benchmark")
+async def run_benchmark(req: BenchmarkRequest):
+    """Runs a real benchmark workload and returns measured results."""
+    results = []
+    file_sizes = []
+
+    if req.workload in ("standard", "large", "dedup_and_cow", "write_throughput", "snapshot_latency"):
+        multiplier = 3 if req.workload == "large" else 1
+        # Write benchmark
+        t0 = time.time()
+        payload = ("AeroFS Benchmark Block Content\n" * 150 * multiplier).encode()
+        inode, dedup = fs.write_file("_bench_file_a.tmp", payload)
+        write_ms = round((time.time() - t0) * 1000, 2)
+        results.append({"operation": "write_file", "size_bytes": len(payload),
+                        "duration_ms": write_ms, "blocks_used": len(inode.block_ids),
+                        "dedup_hits": dedup})
+
+        # Duplicate benchmark
+        t0 = time.time()
+        dup_inode, dup_dedup = fs.write_file("_bench_file_b.tmp", payload)
+        dup_ms = round((time.time() - t0) * 1000, 2)
+        results.append({"operation": "duplicate_identical", "size_bytes": len(payload),
+                        "duration_ms": dup_ms, "blocks_used": len(dup_inode.block_ids),
+                        "dedup_hits": dup_dedup})
+
+        # Snapshot benchmark
+        t0 = time.time()
+        snap_name = f"_bench_snap_{int(time.time())}"
+        fs.create_snapshot(snap_name)
+        snap_ms = round((time.time() - t0) * 1000, 2)
+        results.append({"operation": "create_snapshot", "duration_ms": snap_ms})
+
+        # Scrub benchmark
+        t0 = time.time()
+        scrub = fs.scrub_all()
+        scrub_ms = round((time.time() - t0) * 1000, 2)
+        results.append({"operation": "merkle_scrub", "duration_ms": scrub_ms,
+                        "files_audited": scrub.get("total_files", 0)})
+
+        # Cleanup
+        fs.delete_file("_bench_file_a.tmp")
+        fs.delete_file("_bench_file_b.tmp")
+        fs.delete_snapshot(snap_name)
+
+    elif req.workload == "dedup_heavy":
+        payload = ("DEDUP_TEST_BLOCK " * 256).encode()
+        t0 = time.time()
+        total_dedup = 0
+        for i in range(10):
+            _, d = fs.write_file(f"_dedup_bench_{i}.tmp", payload)
+            total_dedup += d
+        elapsed_ms = round((time.time() - t0) * 1000, 2)
+        results.append({"operation": "dedup_heavy_10files", "duration_ms": elapsed_ms,
+                        "total_dedup_hits": total_dedup})
+        for i in range(10):
+            fs.delete_file(f"_dedup_bench_{i}.tmp")
+
+    return {"status": "success", "workload": req.workload, "results": results,
+            "note": "All values are measured from the live AeroFS backend."}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -295,3 +426,8 @@ async def simulate_demo_workload():
         "message": "Demo workload generated: created files, deduplicated clones, snapshot, and CoW modifications.",
         "telemetry": fs.get_system_telemetry()
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("aerofs.app:app", host="0.0.0.0", port=8000, reload=True)
