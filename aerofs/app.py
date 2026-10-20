@@ -61,6 +61,11 @@ class TextFileRequest(BaseModel):
     content: str
 
 
+class FileCheckRequest(BaseModel):
+    filename: str
+    content_hash: str  # SHA-256 hex digest of proposed content
+
+
 class BitrotRequest(BaseModel):
     block_id: Optional[int] = None
 
@@ -199,6 +204,37 @@ async def serve_dashboard():
 async def get_telemetry():
     """Returns real-time disk block map, deduplication metrics, and inode lists."""
     return fs.get_system_telemetry()
+
+
+@app.post("/api/files/check")
+async def check_file_conflict(req: FileCheckRequest):
+    """
+    Pre-creation conflict check.
+    Returns:
+      - exists: bool — whether a file with this name already exists
+      - is_duplicate: bool — True when content hash matches existing file's Merkle root hash
+      - conflict: bool — True when name exists but content differs (must rename)
+    """
+    import hashlib
+    existing = fs.files.get(req.filename)
+    if not existing:
+        return {"exists": False, "is_duplicate": False, "conflict": False}
+
+    # Read existing content and compare hash
+    try:
+        existing_bytes = fs.read_file(req.filename, verify_integrity=False)
+        existing_hash = hashlib.sha256(existing_bytes).hexdigest()
+    except Exception:
+        existing_hash = None
+
+    is_dup = existing_hash == req.content_hash if existing_hash else False
+    return {
+        "exists": True,
+        "is_duplicate": is_dup,
+        "conflict": not is_dup,
+        "existing_hash": existing_hash,
+        "proposed_hash": req.content_hash,
+    }
 
 
 @app.post("/api/files/create_text")

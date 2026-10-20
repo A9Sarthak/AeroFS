@@ -62,6 +62,18 @@ export const listFiles = (ctx?: { signal?: AbortSignal } | AbortSignal) => {
   return request<{ files: FileView[]; count: number }>('/files', undefined, signal)
 }
 
+export const checkFileConflict = (filename: string, contentHash: string) =>
+  request<{
+    exists: boolean
+    is_duplicate: boolean
+    conflict: boolean
+    existing_hash?: string
+    proposed_hash?: string
+  }>('/files/check', {
+    method: 'POST',
+    body: JSON.stringify({ filename, content_hash: contentHash }),
+  })
+
 export const createTextFile = (filename: string, content: string) =>
   request<CreateFileResponse>('/files/create_text', {
     method: 'POST',
