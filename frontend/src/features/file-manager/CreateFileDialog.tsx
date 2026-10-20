@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { createTextFile } from '../../api/client'
+import { createTextFile, checkFileConflict } from '../../api/client'
 import { useStore } from '../../state/store'
 
 const DEMO_PAYLOADS = [
@@ -12,6 +12,19 @@ const DEMO_PAYLOADS = [
   { label: 'OS kernel-like text', content: 'Operating System Core Kernel Architecture & Filesystem Implementation.\n'.repeat(120) },
 ]
 
+/** SHA-256 of a string using SubtleCrypto */
+async function sha256Hex(text: string): Promise<string> {
+  const enc = new TextEncoder()
+  const buf = await crypto.subtle.digest('SHA-256', enc.encode(text))
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+interface ConflictState {
+  exists: boolean
+  is_duplicate: boolean
+  conflict: boolean
+}
+
 interface Props {
   onClose: () => void
   onSuccess: () => void
@@ -20,23 +33,50 @@ interface Props {
 export default function CreateFileDialog({ onClose, onSuccess }: Props) {
   const [filename, setFilename] = useState('')
   const [content, setContent] = useState('')
+  const [conflict, setConflict] = useState<ConflictState | null>(null)
+  const [checking, setChecking] = useState(false)
+  const checkTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const addEvent = useStore((s) => s.addEvent)
   const showToast = useStore((s) => s.showToast)
   const setCurrentOperation = useStore((s) => s.setCurrentOperation)
+
+  // ── debounced conflict check ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!filename.trim() || !content) {
+      setConflict(null)
+      return
+    }
+    if (checkTimeout.current) clearTimeout(checkTimeout.current)
+    checkTimeout.current = setTimeout(async () => {
+      setChecking(true)
+      try {
+        const hash = await sha256Hex(content)
+        const result = await checkFileConflict(filename.trim(), hash)
+        setConflict(result)
+      } catch {
+        setConflict(null)
+      } finally {
+        setChecking(false)
+      }
+    }, 400)
+    return () => { if (checkTimeout.current) clearTimeout(checkTimeout.current) }
+  }, [filename, content])
 
   const createMut = useMutation({
     mutationFn: () => createTextFile(filename.trim(), content),
     onMutate: () => setCurrentOperation(`Creating ${filename}…`),
     onSuccess: (data) => {
+      const isDupLabel = conflict?.is_duplicate ? ' [DUPLICATE — same blocks reused via CAS]' : ''
       addEvent({
         operation: 'create_file',
         status: 'success',
-        message: `Created '${data.filename}' — ${data.blocks_used} blocks, ${data.deduplicated_chunks} dedup hits`,
+        message: `Created '${data.filename}' — ${data.blocks_used} blocks, ${data.deduplicated_chunks} dedup hits${isDupLabel}`,
         fileName: data.filename,
         affectedBlockIds: data.block_ids,
         details: { inode_id: data.inode_id, merkle_root: data.merkle_root },
       })
-      showToast('success', `Created '${data.filename}' — ${data.deduplicated_chunks} blocks deduped`)
+      showToast('success', `Created '${data.filename}'${conflict?.is_duplicate ? ' (duplicate — blocks shared via CAS)' : ''}`)
       setCurrentOperation(null)
       onSuccess()
     },
@@ -50,11 +90,14 @@ export default function CreateFileDialog({ onClose, onSuccess }: Props) {
   const byteLen = new TextEncoder().encode(content).length
   const estimatedBlocks = Math.max(1, Math.ceil(byteLen / 4096))
 
-  const isValid = filename.trim().length > 0 && content.length > 0
+  // Blocked if name exists with different content
+  const isBlocked = conflict?.conflict === true
+  const isDuplicate = conflict?.is_duplicate === true
+  const isValid = filename.trim().length > 0 && content.length > 0 && !isBlocked
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ width: 560 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal" style={{ width: 580 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-title">📝 Create New File</div>
         <div className="modal-subtitle">
           Write a file to AeroFS using Copy-on-Write and CAS deduplication.
@@ -69,8 +112,90 @@ export default function CreateFileDialog({ onClose, onSuccess }: Props) {
             value={filename}
             onChange={(e) => setFilename(e.target.value)}
             autoFocus
+            style={{
+              borderColor: isBlocked ? '#ef4444' : isDuplicate ? '#8b5cf6' : undefined,
+              boxShadow: isBlocked
+                ? '0 0 0 2px rgba(239,68,68,0.25)'
+                : isDuplicate
+                ? '0 0 0 2px rgba(139,92,246,0.25)'
+                : undefined,
+            }}
           />
         </div>
+
+        {/* ── Conflict / Duplicate Banner ── */}
+        {checking && (
+          <div style={{
+            marginBottom: 12,
+            padding: '8px 12px',
+            background: 'rgba(56,189,248,0.08)',
+            border: '1px solid rgba(56,189,248,0.2)',
+            borderRadius: 6,
+            fontSize: '0.82rem',
+            color: '#7dd3fc',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}>
+            <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
+            Checking for conflicts…
+          </div>
+        )}
+
+        {!checking && isBlocked && (
+          <div style={{
+            marginBottom: 12,
+            padding: '10px 14px',
+            background: 'rgba(239,68,68,0.10)',
+            border: '1px solid rgba(239,68,68,0.4)',
+            borderRadius: 6,
+            fontSize: '0.84rem',
+            color: '#fca5a5',
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>⛔</span> Filename Conflict — Rename Required
+            </div>
+            <div style={{ lineHeight: 1.5 }}>
+              A file named <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: 3 }}>{filename}</code> already
+              exists with <strong>different content</strong>. To protect existing data, you must use a different filename.
+              The existing file will <em>not</em> be overwritten.
+            </div>
+            <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#ef4444' }}>
+              💡 Tip: Use a versioned name like <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: 3 }}>{filename.replace(/(\.\w+)?$/, '_v2$1')}</code>
+            </div>
+          </div>
+        )}
+
+        {!checking && isDuplicate && (
+          <div style={{
+            marginBottom: 12,
+            padding: '10px 14px',
+            background: 'rgba(139,92,246,0.10)',
+            border: '1px solid rgba(139,92,246,0.4)',
+            borderRadius: 6,
+            fontSize: '0.84rem',
+            color: '#c4b5fd',
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>🔗</span> Duplicate Detected — CAS Block Sharing
+            </div>
+            <div style={{ lineHeight: 1.5 }}>
+              Identical content already exists as <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: 3 }}>{filename}</code>.
+              AeroFS will <strong>reuse the same physical disk blocks</strong> via Content-Addressable Storage — no extra disk space will be consumed.
+              You can proceed; both files will point to the same blocks in the 3D Storage Map.
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#8b5cf6' }}>
+              <span style={{
+                display: 'inline-block',
+                width: 10,
+                height: 10,
+                background: '#8b5cf6',
+                borderRadius: 2,
+              }} />
+              Purple blocks in 3D view = Shared/Deduplicated blocks
+            </div>
+          </div>
+        )}
 
         <div className="form-group">
           <label className="form-label">Demo Payload</label>
@@ -109,11 +234,18 @@ export default function CreateFileDialog({ onClose, onSuccess }: Props) {
           <div className="alert alert-success" style={{ marginBottom: 12 }}>
             <span className="alert-icon">✅</span>
             <div>
-              <div className="fw-600">File created!</div>
+              <div className="fw-600">
+                {conflict?.is_duplicate ? 'Duplicate file created! Blocks shared via CAS.' : 'File created!'}
+              </div>
               <div>
                 Inode: #{createMut.data.inode_id} · {createMut.data.blocks_used} blocks ·{' '}
-                {createMut.data.deduplicated_chunks} deduped · Merkle root: <span className="mono">{createMut.data.merkle_root.slice(0,16)}…</span>
+                {createMut.data.deduplicated_chunks} deduped · Merkle root: <span className="mono">{createMut.data.merkle_root.slice(0, 16)}…</span>
               </div>
+              {conflict?.is_duplicate && (
+                <div style={{ marginTop: 4, fontSize: '0.78rem', color: '#8b5cf6' }}>
+                  🔗 View shared blocks in the 3D Storage Map — they appear as purple "Shared/Deduped" blocks.
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -131,8 +263,15 @@ export default function CreateFileDialog({ onClose, onSuccess }: Props) {
             className="btn btn-primary"
             onClick={() => createMut.mutate()}
             disabled={!isValid || createMut.isPending}
+            style={isDuplicate ? { background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)' } : undefined}
           >
-            {createMut.isPending ? '⟳ Creating…' : '📝 Create File'}
+            {createMut.isPending
+              ? '⟳ Creating…'
+              : isBlocked
+              ? '⛔ Rename Required'
+              : isDuplicate
+              ? '🔗 Create Duplicate (CAS Reuse)'
+              : '📝 Create File'}
           </button>
         </div>
       </div>
