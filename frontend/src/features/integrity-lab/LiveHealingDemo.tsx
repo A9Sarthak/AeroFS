@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getTelemetry, liveHeal } from '../../api/client'
 import { useStore } from '../../state/store'
 import type {
@@ -243,6 +243,7 @@ function DataFlowAnimation({
 type DemoPhase = 'idle' | 'baseline' | 'corrupting' | 'corrupted' | 'repairing' | 'repaired'
 
 export default function LiveHealingDemo() {
+  const queryClient = useQueryClient()
   const showToast = useStore(s => s.showToast)
   const addEvent = useStore(s => s.addEvent)
 
@@ -316,6 +317,7 @@ export default function LiveHealingDemo() {
       const c = res as LiveHealCorruptResponse
       setCorrupt(c)
       setPhase('corrupted')
+      queryClient.invalidateQueries({ queryKey: ['telemetry'] })
       // Animate bit flip reveal
       setTimeout(() => setBitFlipDone(true), 500)
       addEvent({
@@ -345,6 +347,7 @@ export default function LiveHealingDemo() {
       const r = res as LiveHealRepairResponse
       setRepair(r)
       setPhase('repaired')
+      queryClient.invalidateQueries({ queryKey: ['telemetry'] })
       addEvent({
         operation: 'Live Auto-Heal Recovery',
         status: 'success',
@@ -398,6 +401,7 @@ export default function LiveHealingDemo() {
       const c = cRes as LiveHealCorruptResponse
       setCorrupt(c)
       setPhase('corrupted')
+      queryClient.invalidateQueries({ queryKey: ['telemetry'] })
       setTimeout(() => setBitFlipDone(true), 400)
       addEvent({
         operation: 'Live Bit-Rot Injection',
@@ -418,6 +422,7 @@ export default function LiveHealingDemo() {
       const r = rRes as LiveHealRepairResponse
       setRepair(r)
       setPhase('repaired')
+      queryClient.invalidateQueries({ queryKey: ['telemetry'] })
       addEvent({
         operation: 'Live Auto-Heal Recovery',
         status: 'success',

@@ -710,6 +710,7 @@
         <div class="modal-label">Included in Snapshots</div>
         <div class="modal-val" id="modalBlockSnaps">-</div>
       </div>
+      <div id="modalBlockActionArea" style="margin-top: 16px;"></div>
     </div>
   </div>
 
@@ -882,20 +883,38 @@
       fetchTelemetry();
     }
 
-    async function injectBitRot() {
+    async function injectBitRot(targetBlockId) {
       try {
-        const res = await fetch('/api/simulate/bitrot', { method: 'POST' });
+        const payload = (typeof targetBlockId === 'number') ? { block_id: targetBlockId } : {};
+        const res = await fetch('/api/simulate/bitrot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
         const data = await res.json();
         if (res.ok) {
-          showToast(`⚠️ ${data.message} (Marked RED in map)`);
-          alert(`💥 Bit-Rot Injected into Sector #${data.corrupted_block}!\n\nNotice that Sector #${data.corrupted_block} turned RED and is blinking in the map.\nNow click 'Run Merkle Scrub' to see the integrity audit!`);
-          fetchTelemetry();
+          // 1. Immediately update telemetry so the block turns RED right away in the DOM!
+          await fetchTelemetry();
+
+          // 2. Highlight/scroll to the corrupted block in the 1,024-grid
+          const cell = document.getElementById(`block-${data.corrupted_block}`);
+          if (cell) {
+            cell.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            cell.style.outline = '2px solid #ffffff';
+            setTimeout(() => { if (cell) cell.style.outline = ''; }, 3000);
+          }
+
+          showToast(`💥 Bit-Rot Injected into Sector #${data.corrupted_block}! Block turned RED.`);
+
+          // If blockModal is currently open, refresh its inspector view
+          if (document.getElementById('blockModal').classList.contains('active')) {
+            inspectBlock(data.corrupted_block);
+          }
         } else {
           showToast(`Error: ${data.detail}`);
-          alert(`⚠️ ${data.detail}`);
         }
       } catch (err) {
-        alert("Error injecting bit-rot: " + err);
+        showToast("Error injecting bit-rot: " + err);
       }
     }
 
@@ -983,6 +1002,24 @@
           data.referencing_files.join(', ') : 'None (Or orphaned block)';
         document.getElementById('modalBlockSnaps').textContent = (data.referencing_snapshots && data.referencing_snapshots.length) ? 
           data.referencing_snapshots.join(', ') : 'None';
+
+        const actionArea = document.getElementById('modalBlockActionArea');
+        if (actionArea) {
+          if (data.is_corrupted) {
+            actionArea.innerHTML = `
+              <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); padding: 10px; border-radius: 8px; text-align: center;">
+                <span style="color: #ef4444; font-weight: 700; font-size: 13px;">⚠️ Sector #${blockId} is Corrupted</span>
+                <button class="btn-primary" style="margin-top: 8px; width: 100%; justify-content: center; background: linear-gradient(135deg, #059669, #10b981);" onclick="runSelfHeal()">✨ Self-Heal Now</button>
+              </div>`;
+          } else if (data.is_allocated && !data.is_metadata) {
+            actionArea.innerHTML = `
+              <button class="btn-danger" style="width: 100%; justify-content: center;" onclick="injectBitRot(${blockId})">
+                💥 Inject Bit-Rot Into Sector #${blockId}
+              </button>`;
+          } else {
+            actionArea.innerHTML = '';
+          }
+        }
 
         document.getElementById('blockModal').classList.add('active');
       } catch (err) {

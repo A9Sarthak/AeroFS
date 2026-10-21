@@ -231,7 +231,10 @@ export default function PhysicalDisk3D({
 
           let color = palette[item.state] || '#38bdf8'
           let size = 0.22
-          if (isSelected) {
+          if (item.state === 'corrupted') {
+            color = isSelected ? '#ff2244' : '#ef4444'
+            size = isSelected ? 0.48 : 0.38
+          } else if (isSelected) {
             color = '#ffffff'
             size = 0.45
           } else if (isHovered || isHighlighted) {

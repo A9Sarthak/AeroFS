@@ -179,6 +179,7 @@ export default function IntegrityLab() {
         setVisibleSteps(i)
       }
       await refreshPatrol()
+      queryClient.invalidateQueries({ queryKey: ['telemetry'] })
       if (result.is_healed) {
         showToast('success', `Auto-Heal complete: ${result.title}`)
         addEvent({

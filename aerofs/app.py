@@ -27,6 +27,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+FRONTEND_ASSETS = os.path.join(FRONTEND_DIST, "assets")
+
+if os.path.exists(FRONTEND_ASSETS):
+    app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS), name="assets")
+
 # Initialize global AeroFS instance (16 MB = 4096 blocks)
 DISK_FILE = os.getenv("AEROFS_DISK_PATH", "aerofs_production_disk.bin")
 fs = AeroFileSystem(disk_path=DISK_FILE, total_blocks=4096)
@@ -333,12 +339,26 @@ async def run_benchmark(req: BenchmarkRequest):
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_dashboard():
-    """Serves the AeroFS interactive visualization dashboard."""
+    """Serves the modern AeroFS React Studio dashboard, or falls back to template."""
+    dist_index = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.exists(dist_index):
+        with open(dist_index, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
     html_path = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
     if os.path.exists(html_path):
         with open(html_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     return HTMLResponse(content="<h2>AeroFS Dashboard Template Not Found</h2>")
+
+
+@app.get("/classic", response_class=HTMLResponse)
+async def serve_classic_dashboard():
+    """Serves the classic single-file HTML dashboard."""
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content="<h2>AeroFS Classic Dashboard Not Found</h2>")
 
 
 @app.get("/api/telemetry")
@@ -558,21 +578,49 @@ async def simulate_bit_rot(req: Optional[BitrotRequest] = None):
         target_block = req.block_id
         if not (0 <= target_block < fs.dev.total_blocks):
             raise HTTPException(status_code=400, detail=f"Block #{target_block} out of bounds (0..{fs.dev.total_blocks - 1}).")
+        if not fs.dev.is_block_allocated(target_block):
+            raise HTTPException(status_code=400, detail=f"Cannot inject bit-rot into unallocated block #{target_block}.")
     else:
-        # Prioritize blocks belonging to active registered files
+        sample_limit = min(1024, fs.dev.total_blocks)
+        # Prioritize blocks belonging to active registered files within the visible 1024 grid
         candidate_blocks = [
             b for f in fs.files.values() for b in f.block_ids
-            if b not in fs.dev.corrupted_blocks
+            if b not in fs.dev.corrupted_blocks and b < sample_limit
         ]
         if not candidate_blocks:
+            # Fallback to any file block not yet corrupted
+            candidate_blocks = [
+                b for f in fs.files.values() for b in f.block_ids
+                if b not in fs.dev.corrupted_blocks
+            ]
+        if not candidate_blocks:
+            # Fallback to any allocated block in the visible grid not yet corrupted
+            candidate_blocks = [
+                b for b in range(fs.dev.data_start_block, sample_limit)
+                if fs.dev.is_block_allocated(b) and b not in fs.dev.corrupted_blocks
+            ]
+        if not candidate_blocks:
+            # Fallback to any allocated block on entire disk not yet corrupted
             candidate_blocks = [
                 b for b in range(fs.dev.data_start_block, fs.dev.total_blocks)
                 if fs.dev.is_block_allocated(b) and b not in fs.dev.corrupted_blocks
             ]
         if not candidate_blocks:
-            sample_payload = ("Additional High-Priority Kernel Data Block\n" * 120).encode("utf-8")
-            inode, _ = fs.write_file(f"extra_file_{len(fs.files)}.txt", sample_payload)
+            # Allocate a new unique block with dynamic nanosecond salt to avoid deduping onto corrupted blocks
+            unique_salt = f"{time.time_ns()}_{random.randint(100000, 999999)}"
+            sample_payload = (f"Kernel Protected Storage Block [{unique_salt}]\n" * 120).encode("utf-8")
+            inode, _ = fs.write_file(f"extra_file_{len(fs.files)}_{random.randint(1000, 9999)}.txt", sample_payload)
             candidate_blocks = [b for b in inode.block_ids if b not in fs.dev.corrupted_blocks]
+
+        if not candidate_blocks:
+            # If all allocated blocks are already corrupted, re-corrupt an existing allocated block
+            candidate_blocks = [
+                b for b in range(fs.dev.data_start_block, fs.dev.total_blocks)
+                if fs.dev.is_block_allocated(b)
+            ]
+
+        if not candidate_blocks:
+            raise HTTPException(status_code=400, detail="No allocated data blocks available on storage subsystem to inject bit-rot.")
 
         target_block = random.choice(candidate_blocks)
 
@@ -1391,6 +1439,22 @@ async def create_large_simulated_file(req: CreateLargeFileRequest):
         "allocation_strategy": "Best-Fit (Hole-Filling)" if req.fill_holes_first else "Best-Fit (Anti-Fragmentation)",
         "message": f"Successfully allocated {len(inode.block_ids)} blocks at physical sectors {inode.block_ids} via Best-Fit."
     }
+
+
+@app.get("/{full_path:path}", response_class=HTMLResponse)
+async def serve_spa_fallback(full_path: str):
+    """Fallback handler to route client-side React routes (e.g. /storage, /terminal) to index.html."""
+    if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi.json"):
+        raise HTTPException(status_code=404)
+    dist_index = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.exists(dist_index):
+        with open(dist_index, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    raise HTTPException(status_code=404)
 
 
 if __name__ == "__main__":

@@ -47,6 +47,7 @@ export default function BlockGrid2D({ gridBlocks, compact = false, highlightIds 
       {cells.map((cell) => {
         const isSelected = selectedBlockId === cell.id
         const isHighlighted = highlightIds?.has(cell.id)
+        const isCorrupted = cell.state === 'corrupted'
         return (
           <div
             key={cell.id}
@@ -59,20 +60,24 @@ export default function BlockGrid2D({ gridBlocks, compact = false, highlightIds 
               width: cellSize,
               height: cellSize,
               borderRadius: 2,
-              background: cell.color,
+              background: isCorrupted ? '#ef4444' : cell.color,
               cursor: 'pointer',
-              border: isSelected
+              border: isCorrupted
+                ? '1.5px solid #ff4444'
+                : isSelected
                 ? '1.5px solid #fff'
                 : isHighlighted
                 ? `1.5px solid ${cell.color}`
                 : '1px solid transparent',
-              boxShadow: isSelected
+              boxShadow: isCorrupted
+                ? '0 0 8px rgba(239, 68, 68, 0.8)'
+                : isSelected
                 ? `0 0 6px ${cell.color}`
                 : isHighlighted
                 ? `0 0 4px ${cell.color}`
                 : 'none',
-              transform: (isSelected || isHighlighted) ? 'scale(1.2)' : undefined,
-              zIndex: isSelected ? 2 : isHighlighted ? 1 : 0,
+              transform: (isCorrupted || isSelected || isHighlighted) ? 'scale(1.25)' : undefined,
+              zIndex: isCorrupted ? 3 : isSelected ? 2 : isHighlighted ? 1 : 0,
               transition: 'transform 0.15s, box-shadow 0.15s',
               opacity: cell.state === 'free' ? 0.5 : 1,
             }}
