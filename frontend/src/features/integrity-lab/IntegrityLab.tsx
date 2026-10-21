@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getTelemetry,
@@ -6,10 +6,20 @@ import {
   runHeal,
   injectBitRot,
   getMerkleProof,
-  readFile
+  readFile,
+  simulateAutoHeal,
+  getPatrolStatus,
+  togglePatrol,
 } from '../../api/client'
 import { useStore } from '../../state/store'
-import type { ScrubReport, HealReport, MerkleProof } from '../../api/types'
+import type {
+  ScrubReport,
+  HealReport,
+  MerkleProof,
+  AutoHealSimulationResponse,
+  AutoHealStep,
+  PatrolStatusResponse,
+} from '../../api/types'
 
 export default function IntegrityLab() {
   const queryClient = useQueryClient()
@@ -17,6 +27,7 @@ export default function IntegrityLab() {
   const addEvent = useStore((s) => s.addEvent)
   const setCurrentOperation = useStore((s) => s.setCurrentOperation)
   const setSelectedBlockId = useStore((s) => s.setSelectedBlockId)
+  const setActiveView = useStore((s) => s.setActiveView)
 
   // Step state in the guided integrity pipeline
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1)
@@ -33,6 +44,25 @@ export default function IntegrityLab() {
   const [proofBlockIdx, setProofBlockIdx] = useState<number>(0)
   const [merkleProof, setMerkleProof] = useState<MerkleProof | null>(null)
   const [proofLoading, setProofLoading] = useState(false)
+
+  // ─── Auto-Healing Simulator State ───────────────────────────────────────────
+  type HealScenario = 'read_repair' | 'background_scrub' | 'snapshot_extent'
+  const [healScenario, setHealScenario] = useState<HealScenario>('read_repair')
+  const [healRunning, setHealRunning] = useState(false)
+  const [healResult, setHealResult] = useState<AutoHealSimulationResponse | null>(null)
+  const [visibleSteps, setVisibleSteps] = useState<number>(0) // animated step reveal
+  const [patrolStatus, setPatrolStatus] = useState<PatrolStatusResponse | null>(null)
+  const [patrolLoading, setPatrolLoading] = useState(false)
+  const healScrollRef = useRef<HTMLDivElement>(null)
+
+  // Fetch patrol status once on mount and after each simulation
+  const refreshPatrol = async () => {
+    try {
+      const st = await getPatrolStatus()
+      setPatrolStatus(st)
+    } catch { /* ignore */ }
+  }
+  useEffect(() => { refreshPatrol() }, [])
 
   // Fetch telemetry
   const { data: telemetry } = useQuery({
@@ -135,6 +165,52 @@ export default function IntegrityLab() {
     onSettled: () => setCurrentOperation(null),
   })
 
+  // ─── Auto-Heal Simulation Handler ───────────────────────────────────────────
+  const runAutoHealSimulation = async () => {
+    setHealRunning(true)
+    setHealResult(null)
+    setVisibleSteps(0)
+    try {
+      const result = await simulateAutoHeal({ scenario: healScenario })
+      setHealResult(result)
+      // Stagger step reveal for cinematic animation
+      for (let i = 1; i <= result.steps.length; i++) {
+        await new Promise(r => setTimeout(r, 420))
+        setVisibleSteps(i)
+      }
+      await refreshPatrol()
+      if (result.is_healed) {
+        showToast('success', `Auto-Heal complete: ${result.title}`)
+        addEvent({
+          operation: 'Auto-Heal Simulation',
+          status: 'success',
+          message: `${result.title} — Block #${result.target_block} recovered via ${result.recovery_source}`,
+        })
+      } else {
+        showToast('warning', 'Auto-Heal partially succeeded')
+      }
+    } catch (err: any) {
+      showToast('error', `Auto-Heal simulation failed: ${err.message}`)
+    } finally {
+      setHealRunning(false)
+      setTimeout(() => healScrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 200)
+    }
+  }
+
+  const handlePatrolToggle = async () => {
+    setPatrolLoading(true)
+    try {
+      const res = await togglePatrol()
+      await refreshPatrol()
+      showToast(res.active ? 'success' : 'warning',
+        res.active ? '🟢 Auto-Heal Patrol Daemon activated' : '🔴 Auto-Heal Patrol Daemon deactivated')
+    } catch (err: any) {
+      showToast('error', `Patrol toggle failed: ${err.message}`)
+    } finally {
+      setPatrolLoading(false)
+    }
+  }
+
   // Fetch Merkle Proof
   const handleFetchProof = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -176,7 +252,26 @@ export default function IntegrityLab() {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setActiveView('live-heal')}
+            style={{
+              background: 'linear-gradient(135deg, #ef4444, #f97316)',
+              color: '#fff',
+              border: 'none',
+              padding: '6px 14px',
+              borderRadius: '6px',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 0 15px rgba(239, 68, 68, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <span>❤️‍🔥</span> Live Healing Lab
+          </button>
           <button
             onClick={() => scrubMutation.mutate()}
             disabled={scrubMutation.isPending}
@@ -553,6 +648,270 @@ export default function IntegrityLab() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          AUTO-HEALING SIMULATOR CONSOLE
+          ══════════════════════════════════════════════════════════════════════ */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(20, 30, 55, 0.95) 100%)',
+        borderRadius: '12px',
+        border: '1px solid rgba(139, 92, 246, 0.35)',
+        padding: '1.5rem',
+        boxShadow: '0 0 40px rgba(139, 92, 246, 0.08), inset 0 1px 0 rgba(255,255,255,0.05)'
+      }}>
+        {/* Section header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, background: 'linear-gradient(90deg, #a78bfa, #38bdf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              ⚡ Auto-Healing Simulator Console
+            </h3>
+            <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#94a3b8', maxWidth: '560px' }}>
+              Simulates the 3 core AeroFS self-healing scenarios: on-demand read-repair, background scrub patrol, and snapshot extent failover — with animated step-by-step playback.
+            </p>
+          </div>
+
+          {/* Patrol Daemon Toggle */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.75rem',
+            background: 'rgba(30, 41, 59, 0.6)', padding: '0.6rem 1rem',
+            borderRadius: '8px', border: '1px solid rgba(255,255,255,0.07)'
+          }}>
+            <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>Auto-Heal Patrol</span>
+            <button
+              id="patrol-toggle-btn"
+              onClick={handlePatrolToggle}
+              disabled={patrolLoading}
+              style={{
+                position: 'relative', width: '44px', height: '24px',
+                borderRadius: '12px', border: 'none', cursor: 'pointer',
+                background: patrolStatus?.active ? '#10b981' : '#334155',
+                transition: 'background 0.25s ease',
+                outline: 'none'
+              }}
+              title={patrolStatus?.active ? 'Click to disable patrol daemon' : 'Click to enable patrol daemon'}
+            >
+              <span style={{
+                position: 'absolute', top: '3px',
+                left: patrolStatus?.active ? '23px' : '3px',
+                width: '18px', height: '18px', borderRadius: '50%',
+                background: '#fff', transition: 'left 0.25s ease',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+              }} />
+            </button>
+            <span style={{
+              fontSize: '0.75rem', fontWeight: 700,
+              color: patrolStatus?.active ? '#10b981' : '#64748b'
+            }}>
+              {patrolStatus?.active ? '🟢 Active' : '🔴 Inactive'}
+            </span>
+            {patrolStatus && patrolStatus.heal_log_count > 0 && (
+              <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                ({patrolStatus.heal_log_count} heals logged)
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Scenario Selector Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
+          {([
+            {
+              id: 'read_repair',
+              icon: '⚡',
+              label: 'On-Demand Read-Repair',
+              desc: 'Corruption caught during live application read. Zero-downtime recovery from Tier-1 cache.',
+              accent: '#38bdf8',
+            },
+            {
+              id: 'background_scrub',
+              icon: '🛡️',
+              label: 'Background Scrub Patrol',
+              desc: 'Periodic daemon finds decayed cold blocks before any read happens. Proactive multi-tier repair.',
+              accent: '#10b981',
+            },
+            {
+              id: 'snapshot_extent',
+              icon: '📷',
+              label: 'Snapshot Extent Failover',
+              desc: 'Cache miss scenario: data recovered from independent snapshot extent store.',
+              accent: '#a78bfa',
+            },
+          ] as { id: HealScenario; icon: string; label: string; desc: string; accent: string }[]).map((sc) => {
+            const isSelected = healScenario === sc.id
+            return (
+              <button
+                key={sc.id}
+                id={`heal-scenario-${sc.id}`}
+                onClick={() => { setHealScenario(sc.id); setHealResult(null); setVisibleSteps(0) }}
+                style={{
+                  background: isSelected ? `rgba(${sc.accent === '#38bdf8' ? '56,189,248' : sc.accent === '#10b981' ? '16,185,129' : '167,139,250'}, 0.1)` : 'rgba(30, 41, 59, 0.5)',
+                  border: `2px solid ${isSelected ? sc.accent : 'rgba(255,255,255,0.06)'}`,
+                  borderRadius: '10px', padding: '1rem', cursor: 'pointer',
+                  textAlign: 'left', transition: 'all 0.2s ease',
+                  transform: isSelected ? 'translateY(-1px)' : 'none',
+                  boxShadow: isSelected ? `0 4px 20px ${sc.accent}22` : 'none',
+                }}
+              >
+                <div style={{ fontSize: '1.5rem', marginBottom: '0.4rem' }}>{sc.icon}</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: isSelected ? sc.accent : '#f1f5f9', marginBottom: '0.3rem' }}>{sc.label}</div>
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: 1.4 }}>{sc.desc}</div>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Run Button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+          <button
+            id="run-auto-heal-btn"
+            onClick={runAutoHealSimulation}
+            disabled={healRunning}
+            style={{
+              background: healRunning
+                ? 'rgba(139, 92, 246, 0.3)'
+                : 'linear-gradient(135deg, #7c3aed 0%, #2563eb 100%)',
+              color: '#fff', border: 'none', padding: '0.6rem 1.5rem',
+              borderRadius: '8px', fontSize: '0.9rem', fontWeight: 700,
+              cursor: healRunning ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              transition: 'all 0.2s ease',
+              boxShadow: healRunning ? 'none' : '0 4px 15px rgba(124, 58, 237, 0.4)',
+            }}
+          >
+            {healRunning ? (
+              <>
+                <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTop: '2px solid #fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                Simulating…
+              </>
+            ) : (
+              <>⚡ Run Auto-Healing Simulation</>
+            )}
+          </button>
+          {healResult && !healRunning && (
+            <span style={{
+              fontSize: '0.8rem', color: healResult.is_healed ? '#10b981' : '#f59e0b',
+              fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem'
+            }}>
+              {healResult.is_healed ? '✓ Healed in' : '⚠ Completed in'} {healResult.latency_ms} ms
+            </span>
+          )}
+        </div>
+
+        {/* Animated Step Execution Feed */}
+        {healResult && (
+          <div ref={healScrollRef} style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            {/* Title */}
+            <div style={{
+              fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc', marginBottom: '0.25rem',
+              display: 'flex', alignItems: 'center', gap: '0.5rem'
+            }}>
+              <span>{healResult.title}</span>
+              <span style={{
+                fontSize: '0.7rem', padding: '2px 8px', borderRadius: '20px', fontWeight: 700,
+                background: healResult.is_healed ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                color: healResult.is_healed ? '#10b981' : '#f59e0b',
+                border: `1px solid ${healResult.is_healed ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`
+              }}>
+                {healResult.is_healed ? '✓ HEALED' : '⚠ PARTIAL'}
+              </span>
+            </div>
+
+            {/* 5 animated steps */}
+            {healResult.steps.map((step: AutoHealStep, idx: number) => {
+              const isVisible = idx < visibleSteps
+              const stepColors: Record<string, { bg: string; border: string; icon: string; label: string }> = {
+                ok:        { bg: 'rgba(14,165,233,0.08)',  border: 'rgba(14,165,233,0.25)',  icon: '🔵', label: 'BASELINE' },
+                corrupted: { bg: 'rgba(239,68,68,0.1)',    border: 'rgba(239,68,68,0.3)',    icon: '💀', label: 'CORRUPTED' },
+                detected:  { bg: 'rgba(245,158,11,0.1)',   border: 'rgba(245,158,11,0.3)',   icon: '🔍', label: 'DETECTED' },
+                healed:    { bg: 'rgba(16,185,129,0.1)',   border: 'rgba(16,185,129,0.3)',   icon: '✅', label: 'HEALED' },
+                verified:  { bg: 'rgba(167,139,250,0.1)',  border: 'rgba(167,139,250,0.3)',  icon: '🔐', label: 'VERIFIED' },
+              }
+              const sc = stepColors[step.status] ?? stepColors['ok']
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    background: sc.bg, border: `1px solid ${sc.border}`,
+                    borderRadius: '8px', padding: '0.75rem 1rem',
+                    opacity: isVisible ? 1 : 0,
+                    transform: isVisible ? 'translateY(0)' : 'translateY(8px)',
+                    transition: 'opacity 0.35s ease, transform 0.35s ease',
+                    display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+                  }}
+                >
+                  <span style={{ fontSize: '1.1rem', lineHeight: 1, marginTop: '1px', flexShrink: 0 }}>{sc.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>STEP {step.step}</span>
+                      <span style={{ fontSize: '0.68rem', padding: '1px 7px', borderRadius: '10px', background: sc.border, color: '#f8fafc', fontWeight: 600 }}>{sc.label}</span>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f1f5f9' }}>{step.phase}</span>
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: '#e2e8f0', fontWeight: 600 }}>{step.title}</div>
+                    <div style={{ fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.45, marginTop: '2px' }}>{step.detail}</div>
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Hash Comparison + Recovery Source */}
+            {visibleSteps >= healResult.steps.length && (
+              <div style={{
+                marginTop: '0.5rem', padding: '1rem 1.25rem',
+                background: 'rgba(15, 23, 42, 0.8)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '8px', display: 'grid',
+                gridTemplateColumns: '1fr 1fr', gap: '0.75rem',
+                opacity: 1, transition: 'opacity 0.4s ease'
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, marginBottom: 4 }}>CORRUPTED HASH (before)</div>
+                  <code style={{ fontSize: '0.72rem', color: '#ef4444', wordBreak: 'break-all', lineHeight: 1.4 }}>{healResult.corrupted_hash}</code>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, marginBottom: 4 }}>RECOVERED HASH (after)</div>
+                  <code style={{ fontSize: '0.72rem', color: '#10b981', wordBreak: 'break-all', lineHeight: 1.4 }}>{healResult.recovered_hash}</code>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, marginBottom: 4 }}>RECOVERY SOURCE</div>
+                  <span style={{
+                    fontSize: '0.8rem', padding: '3px 10px', borderRadius: '12px', fontWeight: 700,
+                    background: 'rgba(167,139,250,0.15)', color: '#a78bfa',
+                    border: '1px solid rgba(167,139,250,0.3)'
+                  }}>{healResult.recovery_source}</span>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, marginBottom: 4 }}>LATENCY</div>
+                  <span style={{ fontSize: '0.8rem', color: '#38bdf8', fontWeight: 700 }}>{healResult.latency_ms} ms</span>
+                  <span style={{ fontSize: '0.72rem', color: '#64748b', marginLeft: '6px' }}>— Zero I/O Error</span>
+                </div>
+                {healResult.expected_hash === healResult.recovered_hash && (
+                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '0.5rem', background: 'rgba(16,185,129,0.08)', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                    <span style={{ color: '#10b981', fontSize: '0.85rem', fontWeight: 700 }}>
+                      ✓ SHA-256 Verified: Recovered hash matches expected Merkle leaf — 100% Data Integrity Confirmed
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Patrol last-heal info */}
+        {patrolStatus?.last_heal && (
+          <div style={{
+            marginTop: '1rem', padding: '0.75rem 1rem',
+            background: 'rgba(16, 185, 129, 0.05)',
+            border: '1px solid rgba(16, 185, 129, 0.15)',
+            borderRadius: '8px', fontSize: '0.78rem', color: '#94a3b8'
+          }}>
+            🕐 <strong style={{ color: '#10b981' }}>Last Patrol Heal:</strong>{' '}
+            Block <strong>#{patrolStatus.last_heal.block_id}</strong> in file{' '}
+            <strong>{patrolStatus.last_heal.owning_file}</strong>{' '}
+            via <code>{patrolStatus.last_heal.source}</code>{' '}
+            at {patrolStatus.last_heal.timestamp}
           </div>
         )}
       </div>

@@ -129,6 +129,112 @@ export interface MerkleProof {
   is_valid?: boolean
 }
 
+export interface AutoHealStep {
+  step: number
+  phase: string
+  status: 'ok' | 'corrupted' | 'detected' | 'healed' | 'verified'
+  title: string
+  detail: string
+}
+
+export interface AutoHealSimulationResponse {
+  status: string
+  scenario: 'read_repair' | 'background_scrub' | 'snapshot_extent'
+  title: string
+  description: string
+  steps: AutoHealStep[]
+  target_file: string
+  target_block: number
+  expected_hash: string
+  corrupted_hash: string
+  recovered_hash: string
+  recovery_source: string
+  latency_ms: number
+  is_healed: boolean
+}
+
+export interface PatrolStatusResponse {
+  active: boolean
+  heal_log_count: number
+  last_heal?: HealRecord | null
+  corrupted_blocks_count: number
+}
+
+// ── Live Healing Demo Types ────────────────────────────────────────────────────
+
+export interface ChangedOffset {
+  offset: number
+  before: string  // hex string e.g. "0x41"
+  after: string
+  before_int: number
+  after_int: number
+}
+
+export interface LiveHealBaselineResponse {
+  stage: 'baseline'
+  filename: string
+  file_size: number
+  num_blocks: number
+  block_ids: number[]
+  target_block_id: number
+  target_block_index: number
+  content_preview: string
+  block_bytes_hex: string
+  block_preview: string
+  block_hash: string
+  merkle_root: string
+  merkle_leaves: string[]
+  recovery_cache_has_block: boolean
+  snapshot_name: string | null
+  snapshot_has_block: boolean
+}
+
+export interface LiveHealCorruptResponse {
+  stage: 'corrupt'
+  filename: string
+  target_block_id: number
+  target_block_index: number
+  clean_hash: string
+  clean_hex_sample: string
+  clean_preview: string
+  clean_merkle_leaves: string[]
+  clean_merkle_root: string
+  corrupted_hash: string
+  corrupted_hex_sample: string
+  corrupted_preview: string
+  corrupted_merkle_leaves: string[]
+  corrupted_merkle_root: string
+  changed_offsets: ChangedOffset[]
+  total_bytes_changed: number
+  hash_matches: boolean
+}
+
+export interface LiveHealRepairResponse {
+  stage: 'repair'
+  filename: string
+  target_block_id: number
+  target_block_index: number
+  corrupted_hash: string
+  corrupted_hex: string
+  corrupted_preview: string
+  recovery_source: string
+  recovered_from_description: string
+  recovered_bytes_hex: string
+  repaired_hash: string
+  repaired_hex: string
+  repaired_preview: string
+  new_merkle_root: string
+  new_merkle_leaves: string[]
+  full_content_after: string
+  is_healed: boolean
+  hash_verified: boolean
+}
+
+export type LiveHealResponse =
+  | LiveHealBaselineResponse
+  | LiveHealCorruptResponse
+  | LiveHealRepairResponse
+
 export interface BlockDetails {
   block_id: number
   is_allocated: boolean
