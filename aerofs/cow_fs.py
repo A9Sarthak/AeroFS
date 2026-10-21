@@ -55,12 +55,17 @@ class Snapshot:
 
     def to_dict(self) -> Dict[str, Any]:
         total_size = sum(f.size for f in self.inodes.values())
+        all_block_ids = sorted(list(set(
+            bid for f in self.inodes.values() for bid in f.block_ids
+        )))
         return {
             "name": self.name,
             "created_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.created_at)),
             "file_count": len(self.inodes),
             "total_size": total_size,
-            "files": [f.name for f in self.inodes.values()]
+            "files": [f.name for f in self.inodes.values()],
+            "block_ids": all_block_ids,
+            "file_blocks": {f.name: f.block_ids for f in self.inodes.values()}
         }
 
 
@@ -307,12 +312,20 @@ class AeroFileSystem:
         # Restore from snapshot
         snap = self.snapshots[snapshot_name]
         for name, saved_inode in snap.inodes.items():
-            # Re-increment refcounts for restored files
             for bid in saved_inode.block_ids:
                 self.dedup.block_refcount[bid] = self.dedup.block_refcount.get(bid, 0) + 1
+                self.dev.allocation_bitmap[bid] = 1
+                try:
+                    data = self.dev.read_block(bid)
+                    chunk_hash = hashlib.sha256(data).hexdigest()
+                    self.dedup.hash_to_block[chunk_hash] = bid
+                    self.dedup.block_to_hash[bid] = chunk_hash
+                except Exception:
+                    pass
             self.files[name] = copy.deepcopy(saved_inode)
             self._merkle_cache.pop(name, None)  # Force fresh tree on next access
 
+        self.dev._sync_bitmap_to_disk()
         self.checkpoint()
         return True
 
@@ -383,24 +396,43 @@ class AeroFileSystem:
         disk_stats = self.dev.get_stats()
         dedup_stats = self.dedup.get_stats()
         
-        # Classify block states for the visual block grid
-        # Types: 0=Free, 1=System Metadata, 2=Unique Data, 3=Deduplicated (ref>1), 4=Corrupted
+        # Map: block_id -> count of live files referencing it
+        file_block_counts: Dict[int, int] = {}
+        for f in self.files.values():
+            for bid in f.block_ids:
+                file_block_counts[bid] = file_block_counts.get(bid, 0) + 1
+
+        # Map: block_id -> count of snapshots referencing it
+        snap_block_counts: Dict[int, int] = {}
+        for s in self.snapshots.values():
+            for sf in s.inodes.values():
+                for bid in sf.block_ids:
+                    snap_block_counts[bid] = snap_block_counts.get(bid, 0) + 1
+
+        # Classify block states for the visual block grid:
+        # 0=Free, 1=System Metadata, 2=Unique Data, 3=CAS Deduplicated (>=2 live files), 4=Corrupted, 5=Snapshot Protected
         block_states = []
-        # Sample first 1024 blocks for the visual display grid
         sample_limit = min(1024, self.dev.total_blocks)
         for b in range(sample_limit):
             if b in self.dev.corrupted_blocks:
-                block_states.append(4) # Corrupted / Bit-Rot
+                block_states.append(4)  # Corrupted / Bit-Rot
             elif b < 4:
-                block_states.append(1) # System Metadata / Superblock
+                block_states.append(1)  # System Metadata / Superblock
             elif not self.dev.is_block_allocated(b):
-                block_states.append(0) # Free
+                block_states.append(0)  # Free
             else:
-                ref = self.dedup.get_refcount(b)
-                if ref > 1:
-                    block_states.append(3) # Deduplicated Shared Block
+                live_refs = file_block_counts.get(b, 0)
+                snap_refs = snap_block_counts.get(b, 0)
+
+                if live_refs >= 2:
+                    # TRUE CAS deduplication: 2+ active files share this physical block
+                    block_states.append(3)  # Deduplicated Shared Block (Purple)
+                elif snap_refs >= 1:
+                    # Block is frozen / protected by a snapshot
+                    block_states.append(5)  # Snapshot-Protected Block (Amber)
                 else:
-                    block_states.append(2) # Unique Data Block
+                    # Unique block belonging to a single active file
+                    block_states.append(2)  # Unique Data Block (Green)
 
         return {
             "disk": disk_stats,
