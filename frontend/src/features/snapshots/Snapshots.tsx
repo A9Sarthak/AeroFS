@@ -11,6 +11,9 @@ export default function Snapshots() {
   const setCurrentOperation = useStore((s) => s.setCurrentOperation)
   const selectedSnapshotName = useStore((s) => s.selectedSnapshotName)
   const setSelectedSnapshotName = useStore((s) => s.setSelectedSnapshotName)
+  const setSelectedBlockId = useStore((s) => s.setSelectedBlockId)
+  const setHighlightedBlockIds = useStore((s) => s.setHighlightedBlockIds)
+  const setActiveView = useStore((s) => s.setActiveView)
 
   const [newSnapshotName, setNewSnapshotName] = useState('')
   const [confirmRestoreName, setConfirmRestoreName] = useState<string | null>(null)
@@ -465,6 +468,125 @@ export default function Snapshots() {
                     ) : (
                       <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Empty snapshot</span>
                     )}
+                  </div>
+                </div>
+
+                {/* ── WHERE ON THE DISK IS THIS SNAPSHOT SAVED? ── */}
+                <div style={{
+                  padding: '0.85rem',
+                  background: 'rgba(15, 23, 42, 0.85)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 20px rgba(245, 158, 11, 0.08)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span>💽</span> Physical Disk Location & Storage Layout
+                    </h4>
+                    <button
+                      onClick={() => {
+                        if (selectedSnapshot.block_ids && selectedSnapshot.block_ids.length > 0) {
+                          setHighlightedBlockIds(new Set(selectedSnapshot.block_ids))
+                          setSelectedBlockId(selectedSnapshot.block_ids[0])
+                          setActiveView('storage')
+                          showToast('success', `Highlighted ${selectedSnapshot.block_ids.length} snapshot blocks on 3D Hard Drive`)
+                        }
+                      }}
+                      disabled={!selectedSnapshot.block_ids || selectedSnapshot.block_ids.length === 0}
+                      style={{
+                        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                        color: '#0f172a',
+                        border: 'none',
+                        padding: '4px 10px',
+                        borderRadius: '5px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        cursor: selectedSnapshot.block_ids?.length ? 'pointer' : 'not-allowed',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        opacity: selectedSnapshot.block_ids?.length ? 1 : 0.5,
+                      }}
+                    >
+                      <span>🧊</span> View on 3D Platter →
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', fontSize: '0.75rem', marginBottom: '0.75rem' }}>
+                    {/* Physical Blocks Location */}
+                    <div style={{ background: 'rgba(30, 41, 59, 0.5)', padding: '0.6rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase' }}>Physical Disk Container</div>
+                      <div style={{ color: '#f8fafc', fontWeight: 600, fontFamily: 'monospace', marginTop: 2 }}>
+                        aerofs_production_disk.bin
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '0.68rem', marginTop: 2 }}>
+                        Block Size: 4,096 Bytes · Binary Sector Image
+                      </div>
+                    </div>
+
+                    {/* Metadata & Inode Journal Location */}
+                    <div style={{ background: 'rgba(30, 41, 59, 0.5)', padding: '0.6rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase' }}>Metadata & Journal Location</div>
+                      <div style={{ color: '#38bdf8', fontWeight: 600, fontFamily: 'monospace', marginTop: 2 }}>
+                        Blocks 0–3 + .journal.json
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '0.68rem', marginTop: 2 }}>
+                        Block 0: Superblock · Blocks 1-3: Bitmap
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Exact Physical Block IDs on Disk */}
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '0.35rem' }}>
+                      Physical Sectors Frozen on Platter:
+                      <span style={{ color: '#f59e0b', marginLeft: 6, fontWeight: 700 }}>
+                        {selectedSnapshot.block_ids?.length ?? 0} sectors allocated
+                      </span>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '4px',
+                      maxHeight: '110px',
+                      overflowY: 'auto',
+                      background: '#090d1a',
+                      padding: '0.5rem',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(255,255,255,0.04)',
+                    }}>
+                      {selectedSnapshot.block_ids && selectedSnapshot.block_ids.length > 0 ? (
+                        selectedSnapshot.block_ids.map((bid) => (
+                          <span
+                            key={bid}
+                            onClick={() => {
+                              setSelectedBlockId(bid)
+                              showToast('success', `Physical Block #${bid} (Byte Offset: ${(bid * 4096).toLocaleString()} B)`)
+                            }}
+                            title={`Click to inspect Physical Block #${bid} · Byte offset ${(bid * 4096).toLocaleString()} · Sector #${bid}`}
+                            style={{
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                              background: 'rgba(245, 158, 11, 0.15)',
+                              border: '1px solid rgba(245, 158, 11, 0.4)',
+                              color: '#fbbf24',
+                              fontFamily: 'monospace',
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            #{bid} ({(bid * 4).toFixed(0)} KB)
+                          </span>
+                        ))
+                      ) : (
+                        <span style={{ fontSize: '0.7rem', color: '#64748b' }}>No physical blocks allocated</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.45rem', lineHeight: 1.4 }}>
+                      💡 <strong>Copy-on-Write (CoW) Principle:</strong> The snapshot does not duplicate block data. It holds immutable pointers to these physical sectors on disk. When live files are edited, new blocks are allocated, leaving these original sectors permanently protected.
+                    </div>
                   </div>
                 </div>
               </div>

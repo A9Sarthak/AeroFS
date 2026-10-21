@@ -319,6 +319,7 @@ function HardDriveHUD({
   const activeRow = activeBlockId !== null ? Math.floor(activeBlockId / GRID_COLS) : null
 
   const isShared = activeBlockId !== null && gridBlocks[activeBlockId] === 3
+  const isSnapshot = activeBlockId !== null && gridBlocks[activeBlockId] === 5
 
   // Owners of active block
   const owners = useMemo(() => {
@@ -335,7 +336,7 @@ function HardDriveHUD({
         width: 320,
         background: 'rgba(10, 15, 29, 0.94)',
         backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(56, 189, 248, 0.35)',
+        border: `1px solid ${isShared ? 'rgba(168, 85, 247, 0.5)' : isSnapshot ? 'rgba(245, 158, 11, 0.5)' : 'rgba(56, 189, 248, 0.35)'}`,
         borderRadius: 8,
         padding: '0.8rem',
         zIndex: 10,
@@ -393,13 +394,32 @@ function HardDriveHUD({
           style={{
             marginTop: 8,
             padding: '6px 8px',
-            background: isShared ? 'rgba(168, 85, 247, 0.18)' : 'rgba(56, 189, 248, 0.1)',
-            border: `1px solid ${isShared ? 'rgba(168, 85, 247, 0.5)' : 'rgba(56, 189, 248, 0.3)'}`,
+            background: isShared
+              ? 'rgba(168, 85, 247, 0.18)'
+              : isSnapshot
+              ? 'rgba(245, 158, 11, 0.15)'
+              : 'rgba(56, 189, 248, 0.1)',
+            border: `1px solid ${
+              isShared
+                ? 'rgba(168, 85, 247, 0.5)'
+                : isSnapshot
+                ? 'rgba(245, 158, 11, 0.5)'
+                : 'rgba(56, 189, 248, 0.3)'
+            }`,
             borderRadius: 6,
           }}
         >
-          <div style={{ fontSize: '0.74rem', fontWeight: 700, color: isShared ? '#c084fc' : '#38bdf8', marginBottom: 2 }}>
-            Physical Block #{activeBlockId} {isShared && '🔗 [CAS DEDUPLICATED]'}
+          <div
+            style={{
+              fontSize: '0.74rem',
+              fontWeight: 700,
+              color: isShared ? '#c084fc' : isSnapshot ? '#fbbf24' : '#38bdf8',
+              marginBottom: 2,
+            }}
+          >
+            Physical Block #{activeBlockId}{' '}
+            {isShared && '🔗 [CAS DEDUPLICATED]'}
+            {isSnapshot && '📷 [SNAPSHOT PROTECTED]'}
           </div>
           <div style={{ fontSize: '0.69rem', color: '#cbd5e1' }}>
             {isShared ? (
@@ -407,7 +427,21 @@ function HardDriveHUD({
                 Both duplicate files point to this single block on the drive:{' '}
                 <strong style={{ color: '#f3e8ff' }}>{owners.join(' & ')}</strong>
                 <div style={{ color: '#a855f7', marginTop: 2, fontWeight: 600 }}>
-                  ✓ 1 Physical Block Used (50% Storage Conserved)
+                  ✓ 1 Physical Block Shared via CAS ({owners.length} file references)
+                </div>
+              </span>
+            ) : isSnapshot ? (
+              <span>
+                <strong style={{ color: '#fbbf24' }}>📷 Preserved on disk by Snapshot:</strong>
+                <div style={{ color: '#cbd5e1', marginTop: 2 }}>
+                  {owners.length > 0 ? (
+                    <span>Active File: <strong style={{ color: '#38bdf8' }}>{owners.join(', ')}</strong></span>
+                  ) : (
+                    <span>Historical extent retained on disk (live file modified via CoW)</span>
+                  )}
+                </div>
+                <div style={{ color: '#f59e0b', marginTop: 2, fontWeight: 600 }}>
+                  ✓ Zero-Copy CoW · Block preserved without duplication
                 </div>
               </span>
             ) : owners.length > 0 ? (
@@ -830,6 +864,11 @@ export default function StorageMap() {
                     🔗 CAS Deduplicated: Multiple files point to this single block on the drive!
                   </div>
                 )}
+                {hoveredState === 'snapshot' && (
+                  <div style={{ fontSize: '0.7rem', color: '#fbbf24', marginTop: 2 }}>
+                    📷 Snapshot Protected: Preserved on disk by point-in-time snapshot (Zero-Copy CoW)!
+                  </div>
+                )}
               </div>
             )}
 
@@ -859,9 +898,10 @@ export default function StorageMap() {
                 alignItems: 'center',
                 fontSize: '0.75rem',
                 zIndex: 10,
+                flexWrap: 'wrap',
               }}
             >
-              {(['metadata', 'unique', 'shared', 'corrupted', 'free'] as const).map((s) => (
+              {(['metadata', 'unique', 'shared', 'snapshot', 'corrupted', 'free'] as const).map((s) => (
                 <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                   <span
                     style={{

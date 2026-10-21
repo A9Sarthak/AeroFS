@@ -3,7 +3,7 @@
 //  Derived from actual API response shapes; no fabricated fields
 // ============================================================
 
-export type BlockState = 'free' | 'metadata' | 'unique' | 'shared' | 'corrupted' | 'unknown'
+export type BlockState = 'free' | 'metadata' | 'unique' | 'shared' | 'corrupted' | 'snapshot' | 'unknown'
 
 export interface BlockView {
   blockId: number
@@ -56,6 +56,8 @@ export interface SnapshotView {
   file_count: number
   total_size: number
   files: string[]
+  block_ids?: number[]
+  file_blocks?: Record<string, number[]>
 }
 
 export interface TelemetryResponse {
@@ -293,6 +295,7 @@ export const GRID_STATE_MAP: Record<number, BlockState> = {
   2: 'unique',
   3: 'shared',
   4: 'corrupted',
+  5: 'snapshot',
 }
 
 export const BLOCK_STATE_COLORS: Record<BlockState, string> = {
@@ -301,6 +304,7 @@ export const BLOCK_STATE_COLORS: Record<BlockState, string> = {
   unique:    '#10b981',
   shared:    '#8b5cf6',
   corrupted: '#ef4444',
+  snapshot:  '#f59e0b',
   unknown:   '#475569',
 }
 
@@ -310,14 +314,16 @@ export const BLOCK_STATE_COLORS_LIGHT: Record<BlockState, string> = {
   unique:    '#059669',
   shared:    '#7c3aed',
   corrupted: '#dc2626',
+  snapshot:  '#d97706',
   unknown:   '#94a3b8',
 }
 
 export const BLOCK_STATE_LABELS: Record<BlockState, string> = {
   free:      'Free',
-  metadata:  'Metadata/Reserved',
+  metadata:  'Metadata/Superblock',
   unique:    'Unique Data',
-  shared:    'Shared/Deduped',
+  shared:    'CAS Deduplicated',
   corrupted: 'Corrupted',
+  snapshot:  'Snapshot Protected',
   unknown:   'Unknown',
 }
