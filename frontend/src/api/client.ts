@@ -16,6 +16,9 @@ import type {
   SnapshotView,
   FileView,
   BenchmarkResponse,
+  AutoHealSimulationResponse,
+  PatrolStatusResponse,
+  LiveHealResponse,
 } from './types'
 
 const BASE = '/api'
@@ -169,3 +172,29 @@ export const runBenchmark = (workload: string) =>
 // ---- Format / Reset ----
 export const formatFilesystem = () =>
   request<{ status: string; message: string }>('/format', { method: 'POST' })
+
+// ---- Auto-Healing Simulator ----
+export const simulateAutoHeal = (body: {
+  scenario: 'read_repair' | 'background_scrub' | 'snapshot_extent'
+  filename?: string
+  block_id?: number
+}) =>
+  request<AutoHealSimulationResponse>('/simulate/auto_heal', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+
+export const getPatrolStatus = () =>
+  request<PatrolStatusResponse>('/simulate/patrol_status')
+
+export const togglePatrol = (active?: boolean) =>
+  request<{ status: string; active: boolean; message: string }>('/simulate/patrol_toggle', {
+    method: 'POST',
+    body: JSON.stringify(active !== undefined ? { active } : {}),
+  })
+
+export const liveHeal = (body: { filename: string; block_index: number; stage: 'baseline' | 'corrupt' | 'repair' }) =>
+  request<LiveHealResponse>('/simulate/live_heal', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })

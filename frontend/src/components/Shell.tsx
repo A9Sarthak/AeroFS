@@ -11,6 +11,7 @@ import FileManager from '../features/file-manager/FileManager'
 import StorageMap from '../features/storage-map/StorageMap'
 import Snapshots from '../features/snapshots/Snapshots'
 import IntegrityLab from '../features/integrity-lab/IntegrityLab'
+import LiveHealingDemo from '../features/integrity-lab/LiveHealingDemo'
 import AuditLog from '../features/audit-log/AuditLog'
 import Benchmarks from '../features/benchmarks/Benchmarks'
 import Settings from '../features/settings/Settings'
@@ -21,6 +22,7 @@ const VIEW_COMPONENTS: Record<string, React.FC> = {
   storage: StorageMap,
   snapshots: Snapshots,
   integrity: IntegrityLab,
+  'live-heal': LiveHealingDemo,
   audit: AuditLog,
   benchmarks: Benchmarks,
   settings: Settings,
