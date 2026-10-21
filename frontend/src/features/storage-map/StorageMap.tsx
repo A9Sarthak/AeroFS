@@ -12,6 +12,7 @@ import {
   BLOCK_STATE_LABELS,
   type BlockState,
   type FileView,
+  type DiskView,
 } from '../../api/types'
 import BlockGrid2D from './BlockGrid2D'
 import HardDrive3D, {
@@ -178,7 +179,7 @@ function SceneCameraController({
 // ─────────────────────────────────────────────────────────────────────────────
 //  SharedBlocksPanel: Deduplicated File Pairs
 // ─────────────────────────────────────────────────────────────────────────────
-function SharedBlocksPanel({ files }: { files: FileView[] }) {
+function SharedBlocksPanel({ files, theme }: { files: FileView[]; theme: 'dark' | 'light' }) {
   const [collapsed, setCollapsed] = useState(false)
 
   const blockOwners = useMemo(() => {
@@ -214,13 +215,13 @@ function SharedBlocksPanel({ files }: { files: FileView[] }) {
         top: 16,
         right: 16,
         width: collapsed ? 200 : 280,
-        background: 'rgba(10, 15, 29, 0.92)',
+        background: theme === 'light' ? 'rgba(255, 255, 255, 0.96)' : 'rgba(10, 15, 29, 0.92)',
         backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(168, 85, 247, 0.5)',
+        border: theme === 'light' ? '1px solid rgba(124, 58, 237, 0.4)' : '1px solid rgba(168, 85, 247, 0.5)',
         borderRadius: 8,
         padding: '0.75rem',
         zIndex: 10,
-        boxShadow: '0 8px 32px rgba(168, 85, 247, 0.25)',
+        boxShadow: theme === 'light' ? '0 8px 32px rgba(124, 58, 237, 0.12)' : '0 8px 32px rgba(168, 85, 247, 0.25)',
         transition: 'all 0.2s ease',
       }}
     >
@@ -228,7 +229,7 @@ function SharedBlocksPanel({ files }: { files: FileView[] }) {
         style={{
           fontSize: '0.78rem',
           fontWeight: 700,
-          color: '#c084fc',
+          color: theme === 'light' ? '#6b21a8' : '#c084fc',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -248,14 +249,14 @@ function SharedBlocksPanel({ files }: { files: FileView[] }) {
           />
           🔗 Deduplicated File Pairs
         </span>
-        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+        <span style={{ fontSize: '0.7rem', color: theme === 'light' ? '#64748b' : '#94a3b8' }}>
           {collapsed ? '▶' : '▼'}
         </span>
       </div>
 
       {!collapsed && (
         <>
-          <div style={{ fontSize: '0.71rem', color: '#94a3b8', margin: '6px 0 8px 0' }}>
+          <div style={{ fontSize: '0.71rem', color: theme === 'light' ? '#475569' : '#94a3b8', margin: '6px 0 8px 0', lineHeight: 1.4 }}>
             Duplicate files share physical blocks via CAS. Purple beams show both files pointing to the same block on the Hard Drive!
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
@@ -263,8 +264,8 @@ function SharedBlocksPanel({ files }: { files: FileView[] }) {
               <div
                 key={i}
                 style={{
-                  background: 'rgba(168, 85, 247, 0.1)',
-                  border: '1px solid rgba(168, 85, 247, 0.3)',
+                  background: theme === 'light' ? 'rgba(124, 58, 237, 0.06)' : 'rgba(168, 85, 247, 0.1)',
+                  border: theme === 'light' ? '1px solid rgba(124, 58, 237, 0.25)' : '1px solid rgba(168, 85, 247, 0.3)',
                   borderRadius: 6,
                   padding: '6px 8px',
                 }}
@@ -274,8 +275,8 @@ function SharedBlocksPanel({ files }: { files: FileView[] }) {
                     <React.Fragment key={f}>
                       <span
                         style={{
-                          background: 'rgba(168, 85, 247, 0.25)',
-                          color: '#f3e8ff',
+                          background: theme === 'light' ? 'rgba(124, 58, 237, 0.15)' : 'rgba(168, 85, 247, 0.25)',
+                          color: theme === 'light' ? '#581c87' : '#f3e8ff',
                           padding: '1px 5px',
                           borderRadius: 3,
                           fontFamily: 'monospace',
@@ -286,12 +287,12 @@ function SharedBlocksPanel({ files }: { files: FileView[] }) {
                         {f}
                       </span>
                       {fi < pair.files.length - 1 && (
-                        <span style={{ color: '#c084fc', fontWeight: 700 }}>↔</span>
+                        <span style={{ color: theme === 'light' ? '#7c3aed' : '#c084fc', fontWeight: 700 }}>↔</span>
                       )}
                     </React.Fragment>
                   ))}
                 </div>
-                <div style={{ fontSize: '0.67rem', color: '#c084fc' }}>
+                <div style={{ fontSize: '0.67rem', color: theme === 'light' ? '#6b21a8' : '#c084fc' }}>
                   {pair.blockCount} shared block{pair.blockCount !== 1 ? 's' : ''} · Physical Block #{pair.sampleBlock}
                 </div>
               </div>
@@ -310,22 +311,34 @@ function HardDriveHUD({
   activeBlockId,
   gridBlocks,
   files,
+  disk,
+  theme,
 }: {
   activeBlockId: number | null
   gridBlocks: number[]
   files: FileView[]
+  disk?: DiskView
+  theme: 'dark' | 'light'
 }) {
   const activeCol = activeBlockId !== null ? activeBlockId % GRID_COLS : null
   const activeRow = activeBlockId !== null ? Math.floor(activeBlockId / GRID_COLS) : null
 
-  const isShared = activeBlockId !== null && gridBlocks[activeBlockId] === 3
-  const isSnapshot = activeBlockId !== null && gridBlocks[activeBlockId] === 5
+  const stateCode = activeBlockId !== null ? gridBlocks[activeBlockId] : undefined
+  const isShared = stateCode === 3
+  const isSnapshot = stateCode === 5
+  const isFree = activeBlockId !== null && (stateCode === 0 || stateCode === undefined)
 
   // Owners of active block
   const owners = useMemo(() => {
     if (activeBlockId === null) return []
     return files.filter((f) => f.block_ids?.includes(activeBlockId)).map((f) => f.name)
   }, [activeBlockId, files])
+
+  // Containing free extent if this block is free
+  const containingExtent = useMemo(() => {
+    if (activeBlockId === null || !disk?.free_extents || !isFree) return null
+    return disk.free_extents.find((e) => activeBlockId >= e.start && activeBlockId < e.start + e.length) ?? null
+  }, [activeBlockId, disk?.free_extents, isFree])
 
   return (
     <div
@@ -334,13 +347,26 @@ function HardDriveHUD({
         bottom: 16,
         right: 16,
         width: 320,
-        background: 'rgba(10, 15, 29, 0.94)',
+        background: theme === 'light' ? 'rgba(255, 255, 255, 0.96)' : 'rgba(10, 15, 29, 0.94)',
         backdropFilter: 'blur(12px)',
-        border: `1px solid ${isShared ? 'rgba(168, 85, 247, 0.5)' : isSnapshot ? 'rgba(245, 158, 11, 0.5)' : 'rgba(56, 189, 248, 0.35)'}`,
+        border: `1px solid ${
+          theme === 'light'
+            ? isShared
+              ? 'rgba(124, 58, 237, 0.5)'
+              : isSnapshot
+              ? 'rgba(217, 119, 6, 0.5)'
+              : 'rgba(2, 132, 199, 0.4)'
+            : isShared
+            ? 'rgba(168, 85, 247, 0.5)'
+            : isSnapshot
+            ? 'rgba(245, 158, 11, 0.5)'
+            : 'rgba(56, 189, 248, 0.35)'
+        }`,
         borderRadius: 8,
         padding: '0.8rem',
         zIndex: 10,
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+        boxShadow: theme === 'light' ? '0 8px 32px rgba(0, 0, 0, 0.12)' : '0 8px 32px rgba(0, 0, 0, 0.5)',
+        color: theme === 'light' ? '#0f172a' : '#cbd5e1',
       }}
     >
       <div
@@ -349,11 +375,11 @@ function HardDriveHUD({
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: 8,
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          borderBottom: theme === 'light' ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.08)',
           paddingBottom: 6,
         }}
       >
-        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: theme === 'light' ? '#0284c7' : '#38bdf8', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>💽</span> Enterprise Hard Drive (Physical Layer)
         </span>
         <span
@@ -361,30 +387,64 @@ function HardDriveHUD({
             fontSize: '0.68rem',
             padding: '2px 6px',
             borderRadius: 4,
-            background: 'rgba(56, 189, 248, 0.15)',
-            color: '#7dd3fc',
+            background: theme === 'light' ? 'rgba(2, 132, 199, 0.1)' : 'rgba(56, 189, 248, 0.15)',
+            color: theme === 'light' ? '#0369a1' : '#7dd3fc',
             fontFamily: 'monospace',
+            fontWeight: 600,
           }}
         >
           SATA 6 Gb/s
         </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.72rem', color: '#94a3b8' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.72rem', color: theme === 'light' ? '#475569' : '#94a3b8' }}>
         <div>
-          Vertical Grid: <strong style={{ color: '#f8fafc' }}>64 Col × 64 Row</strong>
+          Vertical Grid: <strong style={{ color: theme === 'light' ? '#0f172a' : '#f8fafc' }}>64 Col × 64 Row</strong>
         </div>
         <div>
-          Capacity: <strong style={{ color: '#f8fafc' }}>4,096 Blocks (16 MiB)</strong>
+          Capacity: <strong style={{ color: theme === 'light' ? '#0f172a' : '#f8fafc' }}>4,096 Blocks (16 MiB)</strong>
         </div>
         <div>
-          Column: <strong style={{ color: activeCol !== null ? '#38bdf8' : '#94a3b8' }}>
+          Column: <strong style={{ color: activeCol !== null ? (theme === 'light' ? '#0284c7' : '#38bdf8') : (theme === 'light' ? '#64748b' : '#94a3b8') }}>
             {activeCol !== null ? `Col #${activeCol}` : '—'}
           </strong>
         </div>
         <div>
-          Row: <strong style={{ color: activeRow !== null ? '#38bdf8' : '#94a3b8' }}>
+          Row: <strong style={{ color: activeRow !== null ? (theme === 'light' ? '#0284c7' : '#38bdf8') : (theme === 'light' ? '#64748b' : '#94a3b8') }}>
             {activeRow !== null ? `Row #${activeRow}` : '—'}
+          </strong>
+        </div>
+      </div>
+
+      {/* Best-Fit Allocation & Fragmentation Telemetry */}
+      <div
+        style={{
+          marginTop: 8,
+          paddingTop: 6,
+          borderTop: theme === 'light' ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.08)',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '6px',
+          fontSize: '0.7rem',
+          color: theme === 'light' ? '#475569' : '#94a3b8',
+        }}
+      >
+        <div>
+          Engine: <strong style={{ color: theme === 'light' ? '#0284c7' : '#38bdf8' }}>Best-Fit</strong>
+        </div>
+        <div>
+          External Frag:{' '}
+          <strong style={{ color: (disk?.fragmentation_percent ?? 0) > 40 ? '#d97706' : '#059669' }}>
+            {disk?.fragmentation_percent ?? 0}%
+          </strong>
+        </div>
+        <div>
+          Free Holes: <strong style={{ color: theme === 'light' ? '#0f172a' : '#f8fafc' }}>{disk?.free_extents_count ?? 1} holes</strong>
+        </div>
+        <div>
+          Largest Hole:{' '}
+          <strong style={{ color: theme === 'light' ? '#7c3aed' : '#a78bfa' }}>
+            {(disk?.largest_free_extent ?? 4092).toLocaleString()} blk
           </strong>
         </div>
       </div>
@@ -395,16 +455,28 @@ function HardDriveHUD({
             marginTop: 8,
             padding: '6px 8px',
             background: isShared
-              ? 'rgba(168, 85, 247, 0.18)'
+              ? theme === 'light'
+                ? 'rgba(124, 58, 237, 0.1)'
+                : 'rgba(168, 85, 247, 0.18)'
               : isSnapshot
-              ? 'rgba(245, 158, 11, 0.15)'
+              ? theme === 'light'
+                ? 'rgba(217, 119, 6, 0.1)'
+                : 'rgba(245, 158, 11, 0.15)'
+              : isFree
+              ? theme === 'light'
+                ? 'rgba(5, 150, 105, 0.1)'
+                : 'rgba(16, 185, 129, 0.12)'
+              : theme === 'light'
+              ? 'rgba(2, 132, 199, 0.08)'
               : 'rgba(56, 189, 248, 0.1)',
             border: `1px solid ${
               isShared
-                ? 'rgba(168, 85, 247, 0.5)'
+                ? theme === 'light' ? 'rgba(124, 58, 237, 0.4)' : 'rgba(168, 85, 247, 0.5)'
                 : isSnapshot
-                ? 'rgba(245, 158, 11, 0.5)'
-                : 'rgba(56, 189, 248, 0.3)'
+                ? theme === 'light' ? 'rgba(217, 119, 6, 0.4)' : 'rgba(245, 158, 11, 0.5)'
+                : isFree
+                ? theme === 'light' ? 'rgba(5, 150, 105, 0.35)' : 'rgba(16, 185, 129, 0.35)'
+                : theme === 'light' ? 'rgba(2, 132, 199, 0.3)' : 'rgba(56, 189, 248, 0.3)'
             }`,
             borderRadius: 6,
           }}
@@ -413,39 +485,71 @@ function HardDriveHUD({
             style={{
               fontSize: '0.74rem',
               fontWeight: 700,
-              color: isShared ? '#c084fc' : isSnapshot ? '#fbbf24' : '#38bdf8',
+              color: isShared
+                ? theme === 'light' ? '#7c3aed' : '#c084fc'
+                : isSnapshot
+                ? theme === 'light' ? '#d97706' : '#fbbf24'
+                : isFree
+                ? theme === 'light' ? '#059669' : '#34d399'
+                : theme === 'light' ? '#0284c7' : '#38bdf8',
               marginBottom: 2,
             }}
           >
             Physical Block #{activeBlockId}{' '}
             {isShared && '🔗 [CAS DEDUPLICATED]'}
             {isSnapshot && '📷 [SNAPSHOT PROTECTED]'}
+            {isFree && '🟢 [FREE / RECLAIMABLE]'}
           </div>
-          <div style={{ fontSize: '0.69rem', color: '#cbd5e1' }}>
+          <div style={{ fontSize: '0.69rem', color: theme === 'light' ? '#1e293b' : '#cbd5e1' }}>
             {isShared ? (
               <span>
                 Both duplicate files point to this single block on the drive:{' '}
-                <strong style={{ color: '#f3e8ff' }}>{owners.join(' & ')}</strong>
-                <div style={{ color: '#a855f7', marginTop: 2, fontWeight: 600 }}>
+                <strong style={{ color: theme === 'light' ? '#581c87' : '#f3e8ff' }}>{owners.join(' & ')}</strong>
+                <div style={{ color: theme === 'light' ? '#6b21a8' : '#a855f7', marginTop: 2, fontWeight: 600 }}>
                   ✓ 1 Physical Block Shared via CAS ({owners.length} file references)
                 </div>
               </span>
             ) : isSnapshot ? (
               <span>
-                <strong style={{ color: '#fbbf24' }}>📷 Preserved on disk by Snapshot:</strong>
-                <div style={{ color: '#cbd5e1', marginTop: 2 }}>
+                <strong style={{ color: theme === 'light' ? '#b45309' : '#fbbf24' }}>📷 Preserved on disk by Snapshot:</strong>
+                <div style={{ color: theme === 'light' ? '#334155' : '#cbd5e1', marginTop: 2 }}>
                   {owners.length > 0 ? (
-                    <span>Active File: <strong style={{ color: '#38bdf8' }}>{owners.join(', ')}</strong></span>
+                    <span>Active File: <strong style={{ color: theme === 'light' ? '#0284c7' : '#38bdf8' }}>{owners.join(', ')}</strong></span>
                   ) : (
                     <span>Historical extent retained on disk (live file modified via CoW)</span>
                   )}
                 </div>
-                <div style={{ color: '#f59e0b', marginTop: 2, fontWeight: 600 }}>
+                <div style={{ color: theme === 'light' ? '#b45309' : '#f59e0b', marginTop: 2, fontWeight: 600 }}>
                   ✓ Zero-Copy CoW · Block preserved without duplication
                 </div>
               </span>
+            ) : isFree ? (
+              <span>
+                <strong style={{ color: theme === 'light' ? '#059669' : '#34d399' }}>🟢 Free Sector (Best-Fit Hole)</strong>
+                <div style={{ color: theme === 'light' ? '#475569' : '#94a3b8', marginTop: 2 }}>
+                  {containingExtent ? (
+                    <span>
+                      Span: Sectors <strong style={{ color: theme === 'light' ? '#0f172a' : '#f8fafc' }}>#{containingExtent.start}..#{containingExtent.start + containingExtent.length - 1}</strong> ({containingExtent.length} contiguous free blocks)
+                    </span>
+                  ) : (
+                    <span>Unallocated sector ready for immediate write</span>
+                  )}
+                </div>
+                <div style={{ color: theme === 'light' ? '#0284c7' : '#38bdf8', marginTop: 3, lineHeight: 1.4 }}>
+                  {containingExtent && containingExtent.length < 64 ? (
+                    <span>
+                      ✓ Best-Fit allocates files of <strong>≤ {containingExtent.length} blocks ({containingExtent.length * 4} KB)</strong> here.
+                      <div style={{ color: theme === 'light' ? '#b45309' : '#f59e0b', marginTop: 3, fontSize: '0.67rem', lineHeight: 1.3 }}>
+                        💡 Why did a 64-block file skip this? A 64-block file cannot fit in an {containingExtent.length}-block hole contiguously! Contiguous Best-Fit skips small holes to keep large files unfragmented.
+                      </div>
+                    </span>
+                  ) : (
+                    <span>✓ Best-Fit will allocate here when a matching file is created</span>
+                  )}
+                </div>
+              </span>
             ) : owners.length > 0 ? (
-              <span>Owner: <strong style={{ color: '#38bdf8' }}>{owners.join(', ')}</strong></span>
+              <span>Owner: <strong style={{ color: theme === 'light' ? '#0284c7' : '#38bdf8' }}>{owners.join(', ')}</strong></span>
             ) : (
               <span>Physical block at column {activeCol}, row {activeRow}</span>
             )}
@@ -531,6 +635,9 @@ export default function StorageMap() {
             </h2>
             <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
               Logical Files ➔ Enterprise Hard Drive (4,096 Vertical Physical Blocks · 64×64)
+              <span style={{ marginLeft: 8, color: '#38bdf8', fontWeight: 600 }}>
+                · 🧩 Best-Fit Allocation ({telemetry?.disk.fragmentation_percent ?? 0}% external frag)
+              </span>
               {sharedBlockCount > 0 && (
                 <span style={{ marginLeft: 8, color: '#c084fc', fontWeight: 600 }}>
                   · {sharedBlockCount} CAS Shared Blocks
@@ -579,10 +686,10 @@ export default function StorageMap() {
             <div
               style={{
                 display: 'flex',
-                background: '#0f172a',
+                background: theme === 'light' ? '#e2e8f0' : '#0f172a',
                 padding: '2px',
                 borderRadius: '6px',
-                border: '1px solid #334155',
+                border: theme === 'light' ? '1px solid #cbd5e1' : '1px solid #334155',
               }}
             >
               {(
@@ -602,8 +709,21 @@ export default function StorageMap() {
                     fontWeight: 600,
                     border: 'none',
                     cursor: 'pointer',
-                    background: viewMode === mode.id ? '#334155' : 'transparent',
-                    color: viewMode === mode.id ? '#38bdf8' : '#94a3b8',
+                    background:
+                      viewMode === mode.id
+                        ? theme === 'light'
+                          ? '#ffffff'
+                          : '#334155'
+                        : 'transparent',
+                    color:
+                      viewMode === mode.id
+                        ? theme === 'light'
+                          ? '#0284c7'
+                          : '#38bdf8'
+                        : theme === 'light'
+                        ? '#64748b'
+                        : '#94a3b8',
+                    boxShadow: viewMode === mode.id && theme === 'light' ? '0 1px 3px rgba(0,0,0,0.1)' : undefined,
                     transition: 'all 0.15s ease',
                   }}
                 >
@@ -619,9 +739,16 @@ export default function StorageMap() {
               value={linkMode}
               onChange={(e) => setLinkMode(e.target.value as any)}
               style={{
-                background: '#0f172a',
-                border: '1px solid #334155',
-                color: linkMode === 'shared' ? '#c084fc' : '#cbd5e1',
+                background: theme === 'light' ? '#ffffff' : '#0f172a',
+                border: theme === 'light' ? '1px solid #cbd5e1' : '1px solid #334155',
+                color:
+                  theme === 'light'
+                    ? linkMode === 'shared'
+                      ? '#7c3aed'
+                      : '#0f172a'
+                    : linkMode === 'shared'
+                    ? '#c084fc'
+                    : '#cbd5e1',
                 padding: '4px 8px',
                 borderRadius: '4px',
                 fontSize: '0.75rem',
@@ -647,9 +774,9 @@ export default function StorageMap() {
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               style={{
-                background: '#0f172a',
-                border: '1px solid #334155',
-                color: '#fff',
+                background: theme === 'light' ? '#ffffff' : '#0f172a',
+                border: theme === 'light' ? '1px solid #cbd5e1' : '1px solid #334155',
+                color: theme === 'light' ? '#0f172a' : '#fff',
                 padding: '4px 8px',
                 borderRadius: '4px',
                 fontSize: '0.78rem',
@@ -659,13 +786,14 @@ export default function StorageMap() {
             <button
               type="submit"
               style={{
-                background: '#334155',
-                color: '#f8fafc',
+                background: theme === 'light' ? '#0284c7' : '#334155',
+                color: '#ffffff',
                 border: 'none',
                 padding: '4px 9px',
                 borderRadius: '4px',
                 fontSize: '0.78rem',
                 cursor: 'pointer',
+                fontWeight: 600,
               }}
             >
               Go
@@ -677,13 +805,14 @@ export default function StorageMap() {
             <button
               onClick={() => setCameraResetCounter((c) => c + 1)}
               style={{
-                background: '#1e293b',
-                color: '#94a3b8',
-                border: '1px solid #334155',
+                background: theme === 'light' ? '#ffffff' : '#1e293b',
+                color: theme === 'light' ? '#0f172a' : '#94a3b8',
+                border: theme === 'light' ? '1px solid #cbd5e1' : '1px solid #334155',
                 padding: '4px 10px',
                 borderRadius: '4px',
                 fontSize: '0.78rem',
                 cursor: 'pointer',
+                fontWeight: 600,
               }}
               title="Reset 3D camera"
             >
@@ -695,9 +824,9 @@ export default function StorageMap() {
           <button
             onClick={() => setUse2DFallback(!use2DFallback)}
             style={{
-              background: use2DFallback ? '#8b5cf6' : '#1e293b',
-              color: '#fff',
-              border: '1px solid #475569',
+              background: use2DFallback ? (theme === 'light' ? '#7c3aed' : '#8b5cf6') : (theme === 'light' ? '#ffffff' : '#1e293b'),
+              color: use2DFallback ? '#fff' : (theme === 'light' ? '#0f172a' : '#fff'),
+              border: theme === 'light' ? '1px solid #cbd5e1' : '1px solid #475569',
               padding: '4px 12px',
               borderRadius: '4px',
               fontSize: '0.78rem',
@@ -869,17 +998,24 @@ export default function StorageMap() {
                     📷 Snapshot Protected: Preserved on disk by point-in-time snapshot (Zero-Copy CoW)!
                   </div>
                 )}
+                {hoveredState === 'free' && (
+                  <div style={{ fontSize: '0.7rem', color: '#34d399', marginTop: 2 }}>
+                    🟢 Free Block: Reclaimed hole available for Best-Fit reallocation!
+                  </div>
+                )}
               </div>
             )}
 
             {/* Deduplicated Files Panel (Top-Right) */}
-            <SharedBlocksPanel files={files} />
+            <SharedBlocksPanel files={files} theme={theme} />
 
             {/* Hard Drive Hardware Telemetry HUD (Bottom-Right) */}
             <HardDriveHUD
               activeBlockId={activeBlockId}
               gridBlocks={gridBlocks}
               files={files}
+              disk={telemetry?.disk}
+              theme={theme}
             />
 
             {/* Color Legend Overlay (Bottom-Left) */}

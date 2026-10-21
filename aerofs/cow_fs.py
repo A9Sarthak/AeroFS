@@ -53,11 +53,15 @@ class Snapshot:
         # Deepcopy of inodes preserves exact block pointer map at this instant
         self.inodes: Dict[str, FileInode] = copy.deepcopy(inodes_snapshot)
 
-    def to_dict(self) -> Dict[str, Any]:
-        total_size = sum(f.size for f in self.inodes.values())
-        all_block_ids = sorted(list(set(
+    @property
+    def block_ids(self) -> List[int]:
+        return sorted(list(set(
             bid for f in self.inodes.values() for bid in f.block_ids
         )))
+
+    def to_dict(self) -> Dict[str, Any]:
+        total_size = sum(f.size for f in self.inodes.values())
+        all_block_ids = self.block_ids
         return {
             "name": self.name,
             "created_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.created_at)),
@@ -113,7 +117,14 @@ class AeroFileSystem:
             else:
                 loaded = self.journal.load(self)
                 if loaded:
-                    pass  # State restored from journal
+                    # Guarantee allocation bitmap reflects all restored active files and snapshots
+                    for f in self.files.values():
+                        for bid in f.block_ids:
+                            self.dev.allocation_bitmap[bid] = 1
+                    for s in self.snapshots.values():
+                        for bid in s.block_ids:
+                            self.dev.allocation_bitmap[bid] = 1
+                    self.dev._sync_bitmap_to_disk()
 
     def format(self) -> None:
         """Formats the virtual disk and resets all filesystem state cleanly."""
@@ -135,7 +146,7 @@ class AeroFileSystem:
         if self._journal_enabled:
             self.journal.save(self)
 
-    def write_file(self, filename: str, data: bytes) -> Tuple[FileInode, int]:
+    def write_file(self, filename: str, data: bytes, fill_holes_first: bool = False) -> Tuple[FileInode, int]:
         """
         Writes data to a file using Copy-on-Write (CoW) and Deduplication semantics.
         Never overwrites existing blocks in-place.
@@ -157,19 +168,53 @@ class AeroFileSystem:
         if not chunks:
             chunks = [b""]  # Empty file gets 1 zero-block
 
+        # Pre-calculate unique chunks that require new physical block allocations on disk
+        seen_in_batch = set()
+        unique_needed_count = 0
+        for chunk in chunks:
+            padded = chunk.ljust(self.block_size, b"\x00")
+            h = compute_chunk_hash(padded)
+            # If already exists in global CAS or seen earlier in this file, it will deduplicate
+            if (h not in self.dedup.hash_to_block or not self.dev.is_block_allocated(self.dedup.hash_to_block[h])) and h not in seen_in_batch:
+                seen_in_batch.add(h)
+                unique_needed_count += 1
+
+        # Allocate Best-Fit contiguous extent(s) for the new unique blocks
+        preallocated_pool: List[int] = []
+        if unique_needed_count > 0:
+            preallocated_pool = self.dev.allocate_best_fit(unique_needed_count, fill_holes_first=fill_holes_first)
+
         allocated_block_ids = []
         leaf_hashes = []
         dedup_count = 0
+        pool_idx = 0
 
-        # 3. Write chunks through Content-Addressable Storage (CAS)
-        for chunk in chunks:
-            padded = chunk.ljust(self.block_size, b"\x00")
-            bid, was_dedup = self.dedup.write_chunk(padded)
-            if was_dedup:
-                dedup_count += 1
-            allocated_block_ids.append(bid)
-            self.recovery_cache[bid] = padded
-            leaf_hashes.append(compute_chunk_hash(padded))
+        try:
+            # 3. Write chunks through Content-Addressable Storage (CAS) with Best-Fit
+            for chunk in chunks:
+                padded = chunk.ljust(self.block_size, b"\x00")
+                h = compute_chunk_hash(padded)
+                is_already_stored = (
+                    h in self.dedup.hash_to_block
+                    and self.dev.is_block_allocated(self.dedup.hash_to_block[h])
+                )
+
+                target_bid = None
+                if not is_already_stored and pool_idx < len(preallocated_pool):
+                    target_bid = preallocated_pool[pool_idx]
+                    pool_idx += 1
+
+                bid, was_dedup = self.dedup.write_chunk(padded, preallocated_block_id=target_bid)
+                if was_dedup:
+                    dedup_count += 1
+                allocated_block_ids.append(bid)
+                self.recovery_cache[bid] = padded
+                leaf_hashes.append(compute_chunk_hash(padded))
+        finally:
+            # Free any unused preallocated blocks (e.g. if duplicate chunks occurred within the file)
+            while pool_idx < len(preallocated_pool):
+                self.dev.free_block(preallocated_pool[pool_idx])
+                pool_idx += 1
 
         # 4. Construct Merkle tree and populate cache
         tree = MerkleTree(allocated_block_ids, self.dev)

@@ -6,8 +6,10 @@ const NAV_ITEMS = [
   { id: 'storage',    icon: '🧊', label: '3D Storage Map' },
   { id: 'snapshots',  icon: '📷', label: 'Snapshots' },
   { id: 'integrity',  icon: '🔬', label: 'Integrity Lab' },
-  { id: 'live-heal',  icon: '❤️‍🔥', label: 'Live Healing Lab' },
-  { id: 'audit',      icon: '📋', label: 'Audit Log' },
+  { id: 'live-heal',    icon: '❤️‍🔥', label: 'Live Healing Lab' },
+  { id: 'best-fit-sim', icon: '🧩', label: 'Best-Fit Lab' },
+  { id: 'terminal',     icon: '💻', label: 'Terminal / CLI' },
+  { id: 'audit',        icon: '📋', label: 'Audit Log' },
   { id: 'benchmarks', icon: '📊', label: 'Benchmarks' },
   { id: 'settings',   icon: '⚙️', label: 'Settings' },
 ]

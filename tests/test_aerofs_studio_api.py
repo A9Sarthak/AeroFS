@@ -101,3 +101,26 @@ def test_benchmark_endpoint():
         assert "operation" in r
         assert "duration_ms" in r
         assert r["duration_ms"] >= 0
+
+
+def test_cli_execute_endpoint():
+    client = TestClient(app)
+    # Test help
+    res_help = client.post("/api/cli/execute", json={"command": "help"})
+    assert res_help.status_code == 200
+    assert "Available AeroFS Commands" in res_help.json()["output"]
+
+    # Test write via CLI
+    res_write = client.post("/api/cli/execute", json={"command": 'write test_cli_file.txt "HELLO_FROM_WEB_CLI"'})
+    assert res_write.status_code == 200
+    assert "Wrote 'test_cli_file.txt'" in res_write.json()["output"]
+
+    # Test ls via CLI
+    res_ls = client.post("/api/cli/execute", json={"command": "ls"})
+    assert res_ls.status_code == 200
+    assert "test_cli_file.txt" in res_ls.json()["output"]
+
+    # Cleanup via CLI
+    res_rm = client.post("/api/cli/execute", json={"command": "rm test_cli_file.txt"})
+    assert res_rm.status_code == 200
+    assert "Deleted 'test_cli_file.txt'" in res_rm.json()["output"]

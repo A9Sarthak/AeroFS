@@ -67,30 +67,30 @@ export default function FileInspectorModal({ file, onClose, onShowInMap }: Props
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Metadata attributes */}
             <div style={{
-              background: 'rgba(30, 41, 59, 0.5)',
+              background: 'var(--bg-panel)',
               padding: '1rem',
               borderRadius: '6px',
-              border: '1px solid rgba(255, 255, 255, 0.05)',
+              border: '1px solid var(--border-dim)',
               display: 'grid',
               gridTemplateColumns: '140px 1fr',
               gap: '0.5rem',
               fontSize: '0.85rem'
             }}>
-              <span style={{ color: '#94a3b8' }}>Filename:</span>
-              <span style={{ color: '#f8fafc', fontWeight: 600 }}>{file.name}</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Filename:</span>
+              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{file.name}</span>
 
-              <span style={{ color: '#94a3b8' }}>Inode ID:</span>
-              <span style={{ color: '#cbd5e1' }}>{details?.inode.inode_id ?? file.inode_id ?? 'N/A'}</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Inode ID:</span>
+              <span style={{ color: 'var(--text-primary)' }}>{details?.inode.inode_id ?? file.inode_id ?? 'N/A'}</span>
 
-              <span style={{ color: '#94a3b8' }}>Logical Size:</span>
-              <span style={{ color: '#cbd5e1' }}>{file.size} bytes</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Logical Size:</span>
+              <span style={{ color: 'var(--text-primary)' }}>{file.size} bytes</span>
 
-              <span style={{ color: '#94a3b8' }}>Physical Blocks:</span>
-              <span style={{ color: '#38bdf8', fontFamily: 'monospace' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Physical Blocks:</span>
+              <span style={{ color: 'var(--accent)', fontFamily: 'monospace' }}>
                 {file.block_ids?.join(', ') || 'None'} ({file.num_blocks} blocks)
               </span>
 
-              <span style={{ color: '#94a3b8' }}>Integrity Status:</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Integrity Status:</span>
               <span>
                 {details?.is_healthy ? (
                   <span style={{ color: '#10b981', fontWeight: 600 }}>✓ Healthy</span>
@@ -101,7 +101,7 @@ export default function FileInspectorModal({ file, onClose, onShowInMap }: Props
                 )}
               </span>
 
-              <span style={{ color: '#94a3b8' }}>Merkle Root:</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Merkle Root:</span>
               <span style={{ color: '#10b981', fontFamily: 'monospace', fontSize: '0.75rem', wordBreak: 'break-all' }}>
                 {file.merkle_root || 'N/A'}
               </span>
@@ -110,15 +110,15 @@ export default function FileInspectorModal({ file, onClose, onShowInMap }: Props
             {/* ASCII Merkle Tree visualization if provided */}
             {details?.ascii_tree && (
               <div>
-                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
                   Merkle Tree Graph:
                 </div>
                 <pre style={{
-                  background: '#020617',
-                  border: '1px solid #334155',
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-base)',
                   padding: '0.75rem',
                   borderRadius: '6px',
-                  color: '#38bdf8',
+                  color: 'var(--text-mono)',
                   fontSize: '0.75rem',
                   overflowX: 'auto',
                   margin: 0
@@ -131,15 +131,15 @@ export default function FileInspectorModal({ file, onClose, onShowInMap }: Props
             {/* Preview of file content */}
             {details?.preview && (
               <div>
-                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
                   Content Preview:
                 </div>
                 <pre style={{
-                  background: '#020617',
-                  border: '1px solid #334155',
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-base)',
                   padding: '0.75rem',
                   borderRadius: '6px',
-                  color: '#f8fafc',
+                  color: 'var(--text-primary)',
                   fontSize: '0.75rem',
                   overflowX: 'auto',
                   maxHeight: '120px',
@@ -170,10 +170,8 @@ export default function FileInspectorModal({ file, onClose, onShowInMap }: Props
 
               <button
                 onClick={onClose}
+                className="btn btn-secondary"
                 style={{
-                  background: '#1e293b',
-                  color: '#f8fafc',
-                  border: '1px solid #334155',
                   padding: '6px 16px',
                   borderRadius: '6px',
                   fontSize: '0.85rem',

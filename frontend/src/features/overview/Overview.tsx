@@ -203,6 +203,51 @@ export default function Overview() {
         </div>
       </div>
 
+      {/* Best-Fit Storage Allocation & Fragmentation Panel */}
+      <div className="card" style={{ marginBottom: 16, padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: '1.75rem', padding: '8px 12px', background: 'rgba(56, 189, 248, 0.1)', borderRadius: 8, border: '1px solid rgba(56, 189, 248, 0.25)' }}>
+            🧩
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>Best-Fit Contiguous Block Allocation</span>
+              <span className="badge badge-primary" style={{ fontSize: '0.7rem' }}>Active Engine</span>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+              When files are deleted, freed blocks form holes. Best-Fit selects the closest-matching hole to prevent space wastage and external fragmentation.
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>External Frag</div>
+            <div style={{ fontWeight: 700, fontSize: '1rem', color: (d.fragmentation_percent ?? 0) > 40 ? 'var(--status-warn)' : 'var(--status-ok)' }}>
+              {d.fragmentation_percent ?? 0}%
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Free Holes</div>
+            <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
+              {d.free_extents_count ?? 1} <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>holes</span>
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Largest Hole</div>
+            <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--accent)' }}>
+              {(d.largest_free_extent ?? 4092).toLocaleString()} <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>blk</span>
+            </div>
+          </div>
+          <button
+            className="btn btn-primary btn-sm"
+            style={{ fontWeight: 600, fontSize: '0.78rem', marginLeft: 8 }}
+            onClick={() => setActiveView('best-fit-sim')}
+          >
+            Launch Simulation Lab →
+          </button>
+        </div>
+      </div>
+
       {/* 2D Block Grid */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-title">

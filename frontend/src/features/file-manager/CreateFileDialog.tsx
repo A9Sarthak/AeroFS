@@ -37,6 +37,9 @@ export default function CreateFileDialog({ onClose, onSuccess }: Props) {
   const [checking, setChecking] = useState(false)
   const checkTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const [fillHolesFirst, setFillHolesFirst] = useState(false)
+
+  const theme = useStore((s) => s.theme)
   const addEvent = useStore((s) => s.addEvent)
   const showToast = useStore((s) => s.showToast)
   const setCurrentOperation = useStore((s) => s.setCurrentOperation)
@@ -64,19 +67,19 @@ export default function CreateFileDialog({ onClose, onSuccess }: Props) {
   }, [filename, content])
 
   const createMut = useMutation({
-    mutationFn: () => createTextFile(filename.trim(), content),
+    mutationFn: () => createTextFile(filename.trim(), content, fillHolesFirst),
     onMutate: () => setCurrentOperation(`Creating ${filename}…`),
     onSuccess: (data) => {
       const isDupLabel = conflict?.is_duplicate ? ' [DUPLICATE — same blocks reused via CAS]' : ''
       addEvent({
         operation: 'create_file',
         status: 'success',
-        message: `Created '${data.filename}' — ${data.blocks_used} blocks, ${data.deduplicated_chunks} dedup hits${isDupLabel}`,
+        message: `Created '${data.filename}' — ${data.blocks_used} blocks allocated at Sector(s) [${data.block_ids.join(', ')}], ${data.deduplicated_chunks} dedup hits${isDupLabel} via Best-Fit`,
         fileName: data.filename,
         affectedBlockIds: data.block_ids,
         details: { inode_id: data.inode_id, merkle_root: data.merkle_root },
       })
-      showToast('success', `Created '${data.filename}'${conflict?.is_duplicate ? ' (duplicate — blocks shared via CAS)' : ''}`)
+      showToast('success', `Created '${data.filename}' (Sector(s): [${data.block_ids.join(', ')}])`)
       setCurrentOperation(null)
       onSuccess()
     },
@@ -197,8 +200,65 @@ export default function CreateFileDialog({ onClose, onSuccess }: Props) {
           </div>
         )}
 
+        {/* Large File & Best-Fit Multi-Block Generator */}
+        <div
+          style={{
+            marginBottom: 14,
+            padding: '10px 12px',
+            background: theme === 'light' ? 'rgba(2, 132, 199, 0.08)' : 'rgba(56, 189, 248, 0.08)',
+            border: theme === 'light' ? '1px solid rgba(2, 132, 199, 0.3)' : '1px solid rgba(56, 189, 248, 0.3)',
+            borderRadius: 8,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: theme === 'light' ? '#0369a1' : '#38bdf8', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>⚡</span> Auto-Generate Large File (Best-Fit Allocation)
+            </span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+              Distinct 4KB physical blocks
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {[
+              { label: '2 Blocks (8 KB)', blocks: 2 },
+              { label: '4 Blocks (16 KB)', blocks: 4 },
+              { label: '8 Blocks (32 KB · Exact Hole)', blocks: 8 },
+              { label: '16 Blocks (64 KB)', blocks: 16 },
+              { label: '32 Blocks (128 KB)', blocks: 32 },
+              { label: '64 Blocks (256 KB Large)', blocks: 64 },
+            ].map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{
+                  fontSize: '0.74rem',
+                  padding: '4px 8px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-base)',
+                  color: 'var(--text-primary)',
+                }}
+                onClick={() => {
+                  const fname = filename.trim() || `large_file_${preset.blocks}blk_${Date.now().toString(36).slice(-4)}.bin`
+                  setFilename(fname)
+                  let generated = ''
+                  for (let i = 0; i < preset.blocks; i++) {
+                    const header = `[AeroFS Sector Chunk #${i + 1}/${preset.blocks} | Entropy: ${Math.random().toString(36).slice(2)}]\n`
+                    const padding = `Data block ${i}: Best-Fit fragmentation management and storage verification.\n`.repeat(40)
+                    const chunk = (header + padding).slice(0, 4096)
+                    generated += chunk.padEnd(4096, ' ')
+                  }
+                  setContent(generated)
+                }}
+              >
+                + {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="form-group">
-          <label className="form-label">Demo Payload</label>
+          <label className="form-label">Demo Payload Presets</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
             {DEMO_PAYLOADS.map((p) => (
               <button
@@ -228,6 +288,42 @@ export default function CreateFileDialog({ onClose, onSuccess }: Props) {
             value={content}
             onChange={(e) => setContent(e.target.value)}
           />
+        </div>
+
+        {/* ── Allocation Strategy Option & Contiguous Explanation ── */}
+        <div style={{
+          marginBottom: 14,
+          padding: '10px 14px',
+          background: theme === 'light' ? 'rgba(241, 245, 249, 0.85)' : 'rgba(30, 41, 59, 0.5)',
+          border: '1px solid var(--border-base)',
+          borderRadius: 6,
+          fontSize: '0.8rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600, color: 'var(--text-primary)' }}>
+              <input
+                type="checkbox"
+                checked={fillHolesFirst}
+                onChange={(e) => setFillHolesFirst(e.target.checked)}
+                style={{ accentColor: theme === 'light' ? '#0284c7' : '#38bdf8' }}
+              />
+              <span>Fill small free holes first (Scatter-Gather)</span>
+            </label>
+            <span style={{ fontSize: '0.72rem', color: fillHolesFirst ? (theme === 'light' ? '#0284c7' : '#38bdf8') : 'var(--text-secondary)' }}>
+              {fillHolesFirst ? 'Splits file across small holes' : 'Default: Contiguous Best-Fit'}
+            </span>
+          </div>
+          <div style={{ marginTop: 6, fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+            {fillHolesFirst ? (
+              <span style={{ color: theme === 'light' ? '#0284c7' : '#38bdf8', fontWeight: 500 }}>
+                ✓ Small reclaimed holes (like Sectors #4..#11) will be filled first. If the file is larger than the hole, the remainder spills into the next extent.
+              </span>
+            ) : (
+              <span>
+                💡 <strong>Why small holes get bypassed by large files:</strong> Contiguous Best-Fit requires an extent of size ≥ {estimatedBlocks} blocks to keep the file contiguous. Holes smaller than this file (e.g. 8-block holes) are preserved for files of ≤ 8 blocks.
+              </span>
+            )}
+          </div>
         </div>
 
         {createMut.isSuccess && (

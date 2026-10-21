@@ -104,13 +104,13 @@ export default function LogicalFiles3D({
                       ? '#f5f3ff'
                       : '#1e1435'
                     : theme === 'light'
-                    ? '#f8fafc'
+                    ? '#ffffff'
                     : '#0f172a'
                 }
-                metalness={0.7}
-                roughness={0.3}
+                metalness={theme === 'light' ? 0.2 : 0.7}
+                roughness={theme === 'light' ? 0.6 : 0.3}
                 transparent
-                opacity={0.9}
+                opacity={0.95}
               />
             </mesh>
 
@@ -118,9 +118,9 @@ export default function LogicalFiles3D({
             <mesh position={[0, 0, 0.16]}>
               <planeGeometry args={[9.5, 3.9]} />
               <meshBasicMaterial
-                color={hasShared ? '#a855f7' : '#0284c7'}
+                color={hasShared ? (theme === 'light' ? '#9333ea' : '#a855f7') : (theme === 'light' ? '#0284c7' : '#38bdf8')}
                 transparent
-                opacity={0.25}
+                opacity={theme === 'light' ? 0.6 : 0.25}
                 wireframe
               />
             </mesh>
@@ -128,14 +128,14 @@ export default function LogicalFiles3D({
             {/* Top Accent Strip */}
             <mesh position={[0, 1.85, 0.18]}>
               <boxGeometry args={[9.5, 0.18, 0.1]} />
-              <meshBasicMaterial color={hasShared ? '#c084fc' : '#38bdf8'} />
+              <meshBasicMaterial color={hasShared ? (theme === 'light' ? '#7e22ce' : '#c084fc') : (theme === 'light' ? '#0284c7' : '#38bdf8')} />
             </mesh>
 
             {/* File Icon & Name */}
             <Text
               position={[-4.3, 1.1, 0.25]}
               fontSize={0.65}
-              color={hasShared ? '#e9d5ff' : '#f8fafc'}
+              color={hasShared ? (theme === 'light' ? '#581c87' : '#e9d5ff') : (theme === 'light' ? '#0f172a' : '#f8fafc')}
               anchorX="left"
               anchorY="middle"
               fontWeight="bold"
@@ -147,7 +147,7 @@ export default function LogicalFiles3D({
             <Text
               position={[-4.3, 0.4, 0.25]}
               fontSize={0.42}
-              color={hasShared ? '#c084fc' : '#94a3b8'}
+              color={hasShared ? (theme === 'light' ? '#7e22ce' : '#c084fc') : (theme === 'light' ? '#475569' : '#94a3b8')}
               anchorX="left"
               anchorY="middle"
             >

@@ -109,11 +109,11 @@ export default function FileEditor({ file, onClose, onSaved }: Props) {
               rows={12}
               style={{
                 width: '100%',
-                background: '#020617',
-                border: '1px solid #334155',
+                background: 'var(--bg-input)',
+                border: '1px solid var(--border-base)',
                 borderRadius: '6px',
                 padding: '0.75rem',
-                color: '#f8fafc',
+                color: 'var(--text-primary)',
                 fontFamily: 'monospace',
                 fontSize: '0.85rem',
                 lineHeight: 1.5,
@@ -121,12 +121,12 @@ export default function FileEditor({ file, onClose, onSaved }: Props) {
               }}
             />
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#94a3b8' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
               <div>
                 Payload: <strong>{byteLength}</strong> bytes (~{estimatedBlocks} blocks @ 4 KiB/block)
               </div>
               <div>
-                Current mapped blocks: <code style={{ color: '#38bdf8' }}>{file.block_ids?.join(', ') || 'None'}</code>
+                Current mapped blocks: <code style={{ color: 'var(--accent)' }}>{file.block_ids?.join(', ') || 'None'}</code>
               </div>
             </div>
 
@@ -134,10 +134,8 @@ export default function FileEditor({ file, onClose, onSaved }: Props) {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
               <button
                 onClick={onClose}
+                className="btn btn-secondary"
                 style={{
-                  background: 'transparent',
-                  color: '#94a3b8',
-                  border: '1px solid #334155',
                   padding: '6px 14px',
                   borderRadius: '6px',
                   fontSize: '0.85rem',

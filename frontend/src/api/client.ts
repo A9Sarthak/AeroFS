@@ -19,6 +19,9 @@ import type {
   AutoHealSimulationResponse,
   PatrolStatusResponse,
   LiveHealResponse,
+  BestFitPreviewResponse,
+  CreateLargeFileResponse,
+  CLIExecuteResponse,
 } from './types'
 
 const BASE = '/api'
@@ -77,10 +80,10 @@ export const checkFileConflict = (filename: string, contentHash: string) =>
     body: JSON.stringify({ filename, content_hash: contentHash }),
   })
 
-export const createTextFile = (filename: string, content: string) =>
+export const createTextFile = (filename: string, content: string, fillHolesFirst: boolean = false) =>
   request<CreateFileResponse>('/files/create_text', {
     method: 'POST',
-    body: JSON.stringify({ filename, content }),
+    body: JSON.stringify({ filename, content, fill_holes_first: fillHolesFirst }),
   })
 
 export const readFile = (filename: string) =>
@@ -197,4 +200,34 @@ export const liveHeal = (body: { filename: string; block_index: number; stage: '
   request<LiveHealResponse>('/simulate/live_heal', {
     method: 'POST',
     body: JSON.stringify(body),
+  })
+
+// ---- Best-Fit Allocation Simulation ----
+export const getBestFitPreview = (blocksNeeded: number, fillHolesFirst: boolean = false) =>
+  request<BestFitPreviewResponse>('/simulate/best_fit_preview', {
+    method: 'POST',
+    body: JSON.stringify({ blocks_needed: blocksNeeded, fill_holes_first: fillHolesFirst }),
+  })
+
+export const createLargeSimulatedFile = (
+  filename: string,
+  numBlocks: number,
+  isUnique: boolean = true,
+  fillHolesFirst: boolean = false
+) =>
+  request<CreateLargeFileResponse>('/simulate/create_large_file', {
+    method: 'POST',
+    body: JSON.stringify({
+      filename,
+      num_blocks: numBlocks,
+      is_unique: isUnique,
+      fill_holes_first: fillHolesFirst,
+    }),
+  })
+
+// ---- Interactive CLI / Shell ----
+export const executeCLICommand = (command: string) =>
+  request<CLIExecuteResponse>('/cli/execute', {
+    method: 'POST',
+    body: JSON.stringify({ command }),
   })

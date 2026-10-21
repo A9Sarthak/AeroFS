@@ -34,10 +34,11 @@ class DeduplicationEngine:
         self.physical_blocks_written: int = 0
         self.dedup_hits: int = 0
 
-    def write_chunk(self, data: bytes) -> Tuple[int, bool]:
+    def write_chunk(self, data: bytes, preallocated_block_id: Optional[int] = None) -> Tuple[int, bool]:
         """
         Stores a 4KB chunk in content-addressable storage.
         If chunk already exists on disk, reuses physical block and increments refcount.
+        If unique, uses preallocated_block_id (from Best-Fit allocation) or allocates a new block.
         Returns: (block_id, is_deduplicated)
         """
         self.logical_blocks_written += 1
@@ -52,8 +53,12 @@ class DeduplicationEngine:
                 self.dedup_hits += 1
                 return existing_block, True
 
-        # Unique chunk: Allocate physical block on virtual disk
-        new_block = self.dev.allocate_block()
+        # Unique chunk: Allocate physical block on virtual disk (Best-Fit)
+        if preallocated_block_id is not None:
+            new_block = preallocated_block_id
+        else:
+            new_block = self.dev.allocate_block()
+
         self.dev.write_block(new_block, data)
         
         # Register in CAS tables

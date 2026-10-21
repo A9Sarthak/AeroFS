@@ -115,7 +115,7 @@ export default function Settings() {
             <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 600, color: 'var(--status-error)' }}>
               Format & Reset Filesystem
             </h3>
-            <p style={{ margin: 0, fontSize: '0.8rem', color: '#cbd5e1', lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
               Completely zeroes out all user inodes, snapshots, and data blocks on the simulation disk.
               Reserved superblocks and allocation bitmaps will be re-initialized to pristine empty state.
             </p>
@@ -152,9 +152,9 @@ export default function Settings() {
                   <button
                     onClick={() => setConfirmFormat(false)}
                     style={{
-                      background: '#1e293b',
-                      color: '#94a3b8',
-                      border: '1px solid #334155',
+                      background: 'var(--bg-input)',
+                      color: 'var(--text-secondary)',
+                      border: '1px solid var(--border-dim)',
                       padding: '4px 10px',
                       borderRadius: '4px',
                       fontSize: '0.75rem',
@@ -199,37 +199,37 @@ export default function Settings() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
           <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-dim)', padding: '0.85rem', borderRadius: '6px' }}>
-            <div style={{ fontWeight: 600, color: '#38bdf8', marginBottom: 4 }}>
+            <div style={{ fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }}>
               Copy-on-Write (CoW)
             </div>
-            <div style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: 1.4 }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
               When a file or snapshot sharing blocks is edited, the original data is never overwritten in place. Instead, new blocks are allocated for the modified chunks, leaving historical snapshots intact.
             </div>
           </div>
 
-          <div style={{ background: 'rgba(30, 41, 59, 0.4)', padding: '0.85rem', borderRadius: '6px' }}>
+          <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-dim)', padding: '0.85rem', borderRadius: '6px' }}>
             <div style={{ fontWeight: 600, color: '#8b5cf6', marginBottom: 4 }}>
               Content-Addressable Deduplication (CAS)
             </div>
-            <div style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: 1.4 }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
               Blocks are fingerprinted with SHA-256. If another file writes identical content, the filesystem increments the existing physical block's reference count rather than allocating redundant storage.
             </div>
           </div>
 
-          <div style={{ background: 'rgba(30, 41, 59, 0.4)', padding: '0.85rem', borderRadius: '6px' }}>
+          <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-dim)', padding: '0.85rem', borderRadius: '6px' }}>
             <div style={{ fontWeight: 600, color: '#10b981', marginBottom: 4 }}>
               Merkle Trees & Scrubbing
             </div>
-            <div style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: 1.4 }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
               Every file is represented as a Merkle tree of block hashes with the root anchored in the inode. Background scrubs verify physical blocks against expected leaf hashes to detect silent bit rot.
             </div>
           </div>
 
-          <div style={{ background: 'rgba(30, 41, 59, 0.4)', padding: '0.85rem', borderRadius: '6px' }}>
+          <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-dim)', padding: '0.85rem', borderRadius: '6px' }}>
             <div style={{ fontWeight: 600, color: '#f59e0b', marginBottom: 4 }}>
               Verified Self-Healing
             </div>
-            <div style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: 1.4 }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
               When bit rot is detected, AeroFS sources clean bytes from either historical snapshot extents or the recovery cache, verifies candidate bytes against the trusted hash, and repairs the corrupted block.
             </div>
           </div>

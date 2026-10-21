@@ -12,6 +12,8 @@ import StorageMap from '../features/storage-map/StorageMap'
 import Snapshots from '../features/snapshots/Snapshots'
 import IntegrityLab from '../features/integrity-lab/IntegrityLab'
 import LiveHealingDemo from '../features/integrity-lab/LiveHealingDemo'
+import BestFitSimulation from '../features/best-fit/BestFitSimulation'
+import TerminalShell from '../features/terminal/TerminalShell'
 import AuditLog from '../features/audit-log/AuditLog'
 import Benchmarks from '../features/benchmarks/Benchmarks'
 import Settings from '../features/settings/Settings'
@@ -23,6 +25,8 @@ const VIEW_COMPONENTS: Record<string, React.FC> = {
   snapshots: Snapshots,
   integrity: IntegrityLab,
   'live-heal': LiveHealingDemo,
+  'best-fit-sim': BestFitSimulation,
+  terminal: TerminalShell,
   audit: AuditLog,
   benchmarks: Benchmarks,
   settings: Settings,
