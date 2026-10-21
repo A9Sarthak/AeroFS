@@ -338,10 +338,10 @@ export default function IntegrityLab() {
                   borderRadius: '20px',
                   fontSize: '0.8rem',
                   fontWeight: 600,
-                  border: 'none',
+                  border: '1px solid var(--border-dim)',
                   cursor: 'pointer',
-                  background: isActive ? '#38bdf8' : '#1e293b',
-                  color: isActive ? '#0f172a' : '#94a3b8',
+                  background: isActive ? 'var(--accent)' : 'var(--bg-input)',
+                  color: isActive ? '#ffffff' : 'var(--text-secondary)',
                   transition: 'all 0.15s ease'
                 }}
               >
@@ -354,7 +354,7 @@ export default function IntegrityLab() {
         {/* Step 1: Baseline */}
         {currentStep === 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ fontSize: '0.85rem', color: '#cbd5e1', lineHeight: 1.5 }}>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
               Choose an existing file to inspect its expected SHA-256 Merkle root and physical data blocks before injecting simulation:
             </div>
 
@@ -367,9 +367,9 @@ export default function IntegrityLab() {
                   if (f?.block_ids?.length) setTargetBlockId(f.block_ids[0])
                 }}
                 style={{
-                  background: '#1e293b',
-                  color: '#fff',
-                  border: '1px solid #334155',
+                  background: 'var(--bg-input)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-base)',
                   padding: '6px 12px',
                   borderRadius: '6px',
                   fontSize: '0.85rem',
@@ -386,8 +386,8 @@ export default function IntegrityLab() {
               <button
                 onClick={() => setCurrentStep(2)}
                 style={{
-                  background: '#38bdf8',
-                  color: '#0f172a',
+                  background: '#0284c7',
+                  color: '#fff',
                   border: 'none',
                   padding: '6px 16px',
                   borderRadius: '6px',
@@ -402,27 +402,27 @@ export default function IntegrityLab() {
 
             {selectedFileObj && (
               <div style={{
-                background: 'rgba(30, 41, 59, 0.4)',
+                background: 'var(--bg-panel)',
                 padding: '1rem',
                 borderRadius: '6px',
-                border: '1px solid rgba(255, 255, 255, 0.05)',
+                border: '1px solid var(--border-dim)',
                 display: 'grid',
                 gridTemplateColumns: '140px 1fr',
                 gap: '0.5rem',
                 fontSize: '0.85rem'
               }}>
-                <span style={{ color: '#94a3b8' }}>File:</span>
-                <span style={{ color: '#f8fafc', fontWeight: 600 }}>{selectedFileObj.name}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>File:</span>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{selectedFileObj.name}</span>
 
-                <span style={{ color: '#94a3b8' }}>Size / Blocks:</span>
-                <span style={{ color: '#cbd5e1' }}>{selectedFileObj.size} bytes ({selectedFileObj.num_blocks} blocks)</span>
+                <span style={{ color: 'var(--text-secondary)' }}>Size / Blocks:</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{selectedFileObj.size} bytes ({selectedFileObj.num_blocks} blocks)</span>
 
-                <span style={{ color: '#94a3b8' }}>Physical Block IDs:</span>
-                <span style={{ color: '#38bdf8', fontFamily: 'monospace' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Physical Block IDs:</span>
+                <span style={{ color: 'var(--accent)', fontFamily: 'monospace' }}>
                   {selectedFileObj.block_ids?.join(', ') || 'None'}
                 </span>
 
-                <span style={{ color: '#94a3b8' }}>Expected Merkle Root:</span>
+                <span style={{ color: 'var(--text-secondary)' }}>Expected Merkle Root:</span>
                 <span style={{ color: '#10b981', fontFamily: 'monospace', fontSize: '0.75rem', wordBreak: 'break-all' }}>
                   {selectedFileObj.merkle_root || 'N/A'}
                 </span>
@@ -443,23 +443,23 @@ export default function IntegrityLab() {
               <div style={{ fontWeight: 600, color: '#ef4444', fontSize: '0.9rem', marginBottom: 4 }}>
                 ⚠️ Controlled Bit-Rot Simulation
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: 1.5 }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                 This flips bytes inside a physical block on the disposable virtual disk image to simulate silent hardware bit corruption.
                 AeroFS uses Content-Addressable SHA-256 hashes to detect this discrepancy.
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-              <label style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
+              <label style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
                 Select Block to Corrupt:
               </label>
               <select
                 value={targetBlockId ?? ''}
                 onChange={(e) => setTargetBlockId(parseInt(e.target.value, 10))}
                 style={{
-                  background: '#1e293b',
-                  color: '#fff',
-                  border: '1px solid #334155',
+                  background: 'var(--bg-input)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-base)',
                   padding: '6px 12px',
                   borderRadius: '6px',
                   fontSize: '0.85rem'
@@ -495,7 +495,7 @@ export default function IntegrityLab() {
         {/* Step 3: Detect via Scrub */}
         {currentStep === 3 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ fontSize: '0.85rem', color: '#cbd5e1', lineHeight: 1.5 }}>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
               Bit rot was injected into <strong>Block #{injectedResult?.block}</strong>.
               Now run the <strong>Merkle Scrub</strong> to let the storage engine compare disk bytes with the trusted SHA-256 leaf hashes:
             </div>
@@ -521,15 +521,15 @@ export default function IntegrityLab() {
 
             {scrubReport && (
               <div style={{
-                background: 'rgba(30, 41, 59, 0.6)',
+                background: 'var(--bg-panel)',
                 padding: '1rem',
                 borderRadius: '6px',
-                border: '1px solid rgba(255, 255, 255, 0.08)'
+                border: '1px solid var(--border-dim)'
               }}>
-                <div style={{ fontWeight: 600, color: '#f8fafc', marginBottom: '0.5rem' }}>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
                   Scrub Audit Report:
                 </div>
-                <div style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                   Audited <strong>{scrubReport.files_checked}</strong> files. Corrupted blocks found:
                   <span style={{ color: '#ef4444', fontWeight: 700, marginLeft: 6 }}>
                     {scrubReport.corrupted_blocks?.length > 0 ? scrubReport.corrupted_blocks.join(', ') : 'None'}
@@ -540,8 +540,8 @@ export default function IntegrityLab() {
                   <button
                     onClick={() => setCurrentStep(4)}
                     style={{
-                      background: '#38bdf8',
-                      color: '#0f172a',
+                      background: '#0284c7',
+                      color: '#fff',
                       border: 'none',
                       padding: '6px 16px',
                       borderRadius: '6px',
@@ -561,7 +561,7 @@ export default function IntegrityLab() {
         {/* Step 4: Heal */}
         {currentStep === 4 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ fontSize: '0.85rem', color: '#cbd5e1', lineHeight: 1.5 }}>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
               AeroFS can automatically restore the corrupted block using either clean chunks from the <strong>Recovery Cache</strong> or <strong>Snapshot Extents</strong>.
               All recovered bytes are checked against expected SHA-256 hashes before being accepted.
             </div>
@@ -599,29 +599,29 @@ export default function IntegrityLab() {
               <div style={{ fontWeight: 600, color: '#10b981', fontSize: '0.95rem', marginBottom: 4 }}>
                 ✓ Healing & Cryptographic Verification Complete
               </div>
-              <div style={{ fontSize: '0.85rem', color: '#cbd5e1', lineHeight: 1.5 }}>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                 Blocks were re-written and verified byte-for-byte against trusted Merkle roots.
               </div>
             </div>
 
             {healReport && (
               <div style={{
-                background: 'rgba(30, 41, 59, 0.6)',
+                background: 'var(--bg-panel)',
                 padding: '1rem',
                 borderRadius: '6px',
-                border: '1px solid rgba(255, 255, 255, 0.08)'
+                border: '1px solid var(--border-dim)'
               }}>
-                <div style={{ fontWeight: 600, color: '#f8fafc', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
                   Heal Operation Summary:
                 </div>
-                <div style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                   Successfully repaired: <strong>{healReport.healed_count}</strong> block(s).
                 </div>
 
                 {healReport.records?.map((rec, i) => (
-                  <div key={i} style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#0f172a', borderRadius: '4px', fontSize: '0.8rem' }}>
-                    <div>Block <strong>#{rec.block_id}</strong>: {rec.success ? '✓ RECOVERED' : '❌ FAILED'}</div>
-                    <div style={{ color: '#94a3b8' }}>Recovery Source: <code>{rec.source}</code></div>
+                  <div key={i} style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'var(--bg-card)', border: '1px solid var(--border-dim)', borderRadius: '4px', fontSize: '0.8rem' }}>
+                    <div style={{ color: 'var(--text-primary)' }}>Block <strong>#{rec.block_id}</strong>: {rec.success ? '✓ RECOVERED' : '❌ FAILED'}</div>
+                    <div style={{ color: 'var(--text-secondary)' }}>Recovery Source: <code>{rec.source}</code></div>
                   </div>
                 ))}
 
@@ -634,9 +634,9 @@ export default function IntegrityLab() {
                       setInjectedResult(null)
                     }}
                     style={{
-                      background: '#334155',
-                      color: '#f8fafc',
-                      border: 'none',
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-base)',
                       padding: '6px 14px',
                       borderRadius: '6px',
                       fontSize: '0.85rem',
@@ -805,7 +805,7 @@ export default function IntegrityLab() {
           <div ref={healScrollRef} style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             {/* Title */}
             <div style={{
-              fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc', marginBottom: '0.25rem',
+              fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem',
               display: 'flex', alignItems: 'center', gap: '0.5rem'
             }}>
               <span>{healResult.title}</span>
@@ -845,12 +845,12 @@ export default function IntegrityLab() {
                   <span style={{ fontSize: '1.1rem', lineHeight: 1, marginTop: '1px', flexShrink: 0 }}>{sc.icon}</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>STEP {step.step}</span>
-                      <span style={{ fontSize: '0.68rem', padding: '1px 7px', borderRadius: '10px', background: sc.border, color: '#f8fafc', fontWeight: 600 }}>{sc.label}</span>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f1f5f9' }}>{step.phase}</span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>STEP {step.step}</span>
+                      <span style={{ fontSize: '0.68rem', padding: '1px 7px', borderRadius: '10px', background: sc.border, color: '#ffffff', fontWeight: 600 }}>{sc.label}</span>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>{step.phase}</span>
                     </div>
-                    <div style={{ fontSize: '0.82rem', color: '#e2e8f0', fontWeight: 600 }}>{step.title}</div>
-                    <div style={{ fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.45, marginTop: '2px' }}>{step.detail}</div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 600 }}>{step.title}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.45, marginTop: '2px' }}>{step.detail}</div>
                   </div>
                 </div>
               )
@@ -938,9 +938,9 @@ export default function IntegrityLab() {
               setProofBlockIdx(0)
             }}
             style={{
-              background: '#1e293b',
-              color: '#fff',
-              border: '1px solid #334155',
+              background: 'var(--bg-input)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-base)',
               padding: '6px 12px',
               borderRadius: '6px',
               fontSize: '0.85rem',
@@ -962,9 +962,9 @@ export default function IntegrityLab() {
             value={proofBlockIdx}
             onChange={(e) => setProofBlockIdx(parseInt(e.target.value, 10) || 0)}
             style={{
-              background: '#1e293b',
-              color: '#fff',
-              border: '1px solid #334155',
+              background: 'var(--bg-input)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-base)',
               padding: '6px 12px',
               borderRadius: '6px',
               fontSize: '0.85rem',
@@ -976,8 +976,8 @@ export default function IntegrityLab() {
             type="submit"
             disabled={!proofFile || proofLoading}
             style={{
-              background: '#38bdf8',
-              color: '#0f172a',
+              background: '#0284c7',
+              color: '#fff',
               border: 'none',
               padding: '6px 16px',
               borderRadius: '6px',
@@ -994,31 +994,31 @@ export default function IntegrityLab() {
         {merkleProof && (
           <div style={{
             marginTop: '1rem',
-            background: 'rgba(30, 41, 59, 0.5)',
+            background: 'var(--bg-panel)',
             padding: '1rem',
             borderRadius: '6px',
-            border: '1px solid rgba(255, 255, 255, 0.05)',
+            border: '1px solid var(--border-dim)',
             display: 'flex',
             flexDirection: 'column',
             gap: '0.5rem',
             fontSize: '0.85rem'
           }}>
             <div>
-              <span style={{ color: '#94a3b8' }}>Leaf Hash (Block #{merkleProof.block_index}): </span>
-              <code style={{ color: '#38bdf8' }}>{merkleProof.leaf_hash}</code>
+              <span style={{ color: 'var(--text-secondary)' }}>Leaf Hash (Block #{merkleProof.block_index}): </span>
+              <code style={{ color: 'var(--accent)' }}>{merkleProof.leaf_hash}</code>
             </div>
 
             <div>
-              <span style={{ color: '#94a3b8' }}>Proof Path (Sibling nodes): </span>
+              <span style={{ color: 'var(--text-secondary)' }}>Proof Path (Sibling nodes): </span>
               <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {merkleProof.proof_path?.length > 0 ? (
                   merkleProof.proof_path.map((sibling, idx) => (
-                    <code key={idx} style={{ color: '#cbd5e1', fontSize: '0.75rem', paddingLeft: '1rem' }}>
+                    <code key={idx} style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', paddingLeft: '1rem' }}>
                       Level {idx}: {sibling}
                     </code>
                   ))
                 ) : (
-                  <span style={{ color: '#64748b' }}>Single-leaf tree (leaf is root)</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Single-leaf tree (leaf is root)</span>
                 )}
               </div>
             </div>

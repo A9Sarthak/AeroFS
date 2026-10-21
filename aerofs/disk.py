@@ -6,7 +6,7 @@ Provides block-level read/write, allocation bitmap, and superblock metadata.
 
 import os
 import struct
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple, Set
 
 MAGIC_NUMBER = b"AER0FS01"
 DEFAULT_BLOCK_SIZE = 4096         # 4 KB per block
@@ -121,14 +121,101 @@ class VirtualBlockDevice:
             f.seek(block_id * self.block_size)
             f.write(padded_data)
 
-    def allocate_block(self) -> int:
-        """Finds and marks the first available free block in the allocation bitmap."""
+    def get_free_extents(self) -> List[Tuple[int, int]]:
+        """
+        Scans allocation bitmap and returns list of contiguous free extents (holes):
+        [(start_block, length), ...]
+        """
+        extents: List[Tuple[int, int]] = []
+        in_extent = False
+        start = -1
         for b in range(DATA_START_BLOCK, self.total_blocks):
             if self.allocation_bitmap[b] == 0:
+                if not in_extent:
+                    in_extent = True
+                    start = b
+            else:
+                if in_extent:
+                    extents.append((start, b - start))
+                    in_extent = False
+        if in_extent:
+            extents.append((start, self.total_blocks - start))
+        return extents
+
+    def allocate_best_fit(self, count: int = 1, fill_holes_first: bool = False) -> List[int]:
+        """
+        Best-Fit Block Allocation Strategy (Minimizing External Fragmentation).
+
+        If fill_holes_first is False (default Contiguous Best-Fit):
+          Searches all available contiguous free holes on disk and selects the
+          extent that minimizes leftover space (length - count >= 0).
+          Files larger than a hole will skip it to stay in one contiguous extent.
+
+        If fill_holes_first is True (Aggressive Hole-Filling / Scatter-Gather):
+          Fills smaller available free holes first to aggressively eliminate fragments,
+          spilling the remainder into larger extents.
+        """
+        if count <= 0:
+            return []
+
+        extents = self.get_free_extents()
+        total_free = sum(e[1] for e in extents)
+        if total_free < count:
+            raise OSError(
+                f"Virtual disk full: Requested {count} blocks, but only {total_free} free blocks remaining in storage subsystem."
+            )
+
+        # 1. Aggressive Hole-Filling (Fills smaller reclaimed holes first)
+        if fill_holes_first:
+            allocated: List[int] = []
+            remaining = count
+            # Sort extents ascending by size so smaller holes (e.g. 8-block hole) are consumed first
+            sorted_extents = sorted(extents, key=lambda e: (e[1], e[0]))
+            for start, length in sorted_extents:
+                take = min(length, remaining)
+                for b in range(start, start + take):
+                    self.allocation_bitmap[b] = 1
+                    allocated.append(b)
+                remaining -= take
+                if remaining == 0:
+                    break
+            self._sync_bitmap_to_disk()
+            return allocated
+
+        # 2. Contiguous Best-Fit Search (Only holes >= count to preserve file continuity)
+        candidates = [e for e in extents if e[1] >= count]
+        if candidates:
+            # Pick extent with minimum leftover space; tie-break on lower block ID
+            best_start, _ = min(candidates, key=lambda e: (e[1] - count, e[0]))
+            allocated = list(range(best_start, best_start + count))
+            for b in allocated:
                 self.allocation_bitmap[b] = 1
-                self._sync_bitmap_to_disk()
-                return b
-        raise OSError("Virtual disk full: No free blocks remaining in storage subsystem.")
+            self._sync_bitmap_to_disk()
+            return allocated
+
+        # 3. Fragmented allocation fallback if no single hole is big enough
+        allocated = []
+        remaining = count
+        sorted_extents = sorted(extents, key=lambda e: (-e[1], e[0]))
+        for start, length in sorted_extents:
+            take = min(length, remaining)
+            for b in range(start, start + take):
+                self.allocation_bitmap[b] = 1
+                allocated.append(b)
+            remaining -= take
+            if remaining == 0:
+                break
+
+        self._sync_bitmap_to_disk()
+        return allocated
+
+    def allocate_block(self) -> int:
+        """
+        Finds and marks a free block using Best-Fit allocation strategy.
+        Picks the smallest available hole to preserve larger contiguous extents.
+        """
+        allocated = self.allocate_best_fit(1)
+        return allocated[0]
 
     def free_block(self, block_id: int) -> None:
         """Frees an allocated block in the bitmap and zeroes its content on disk."""
@@ -205,9 +292,16 @@ class VirtualBlockDevice:
             self.allocation_bitmap[b] = 1
 
     def get_stats(self) -> Dict[str, Any]:
-        """Returns physical disk capacity and allocation metrics."""
+        """Returns physical disk capacity, allocation, and fragmentation metrics."""
         allocated_count = sum(self.allocation_bitmap)
         free_count = self.total_blocks - allocated_count
+        extents = self.get_free_extents()
+        largest_free_extent = max((e[1] for e in extents), default=0)
+
+        # Standard Operating System External Fragmentation Metric:
+        # Frag % = (1 - largest_free_extent / total_free_blocks) * 100
+        frag_percent = round((1.0 - (largest_free_extent / free_count)) * 100, 2) if free_count > 0 else 0.0
+
         return {
             "total_blocks": self.total_blocks,
             "block_size": self.block_size,
@@ -215,5 +309,10 @@ class VirtualBlockDevice:
             "allocated_blocks": allocated_count,
             "free_blocks": free_count,
             "utilization_percent": round((allocated_count / self.total_blocks) * 100, 2),
-            "corrupted_blocks_count": len(self.corrupted_blocks)
+            "corrupted_blocks_count": len(self.corrupted_blocks),
+            "fragmentation_percent": frag_percent,
+            "free_extents_count": len(extents),
+            "largest_free_extent": largest_free_extent,
+            "free_extents": [{"start": s, "length": l} for s, l in extents[:10]],
+            "allocation_strategy": "Best-Fit (Anti-Fragmentation)"
         }

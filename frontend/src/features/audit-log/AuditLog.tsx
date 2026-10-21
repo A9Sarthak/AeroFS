@@ -71,10 +71,8 @@ export default function AuditLog() {
 
         <button
           onClick={exportJSON}
+          className="btn btn-secondary"
           style={{
-            background: '#1e293b',
-            color: '#f8fafc',
-            border: '1px solid #334155',
             padding: '6px 14px',
             borderRadius: '6px',
             fontSize: '0.85rem',
@@ -103,10 +101,10 @@ export default function AuditLog() {
                 borderRadius: '6px',
                 fontSize: '0.8rem',
                 fontWeight: 600,
-                border: 'none',
+                border: '1px solid var(--border-dim)',
                 cursor: 'pointer',
-                background: filterStatus === st ? '#38bdf8' : '#1e293b',
-                color: filterStatus === st ? '#0f172a' : '#94a3b8'
+                background: filterStatus === st ? 'var(--accent)' : 'var(--bg-input)',
+                color: filterStatus === st ? '#ffffff' : 'var(--text-secondary)'
               }}
             >
               {st.charAt(0).toUpperCase() + st.slice(1)}
@@ -158,7 +156,7 @@ export default function AuditLog() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', textAlign: 'left' }}>
               <thead>
-                <tr style={{ background: 'rgba(30, 41, 59, 0.5)', color: '#94a3b8', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                <tr style={{ background: 'var(--bg-panel)', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-dim)' }}>
                   <th style={{ padding: '0.6rem 1rem' }}>Block ID</th>
                   <th style={{ padding: '0.6rem 1rem' }}>Status</th>
                   <th style={{ padding: '0.6rem 1rem' }}>Recovery Source</th>
@@ -169,8 +167,8 @@ export default function AuditLog() {
               </thead>
               <tbody>
                 {filteredRecords.map((r, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
-                    <td style={{ padding: '0.6rem 1rem', fontWeight: 600, color: '#38bdf8' }}>
+                  <tr key={idx} style={{ borderBottom: '1px solid var(--border-dim)' }}>
+                    <td style={{ padding: '0.6rem 1rem', fontWeight: 600, color: 'var(--accent)' }}>
                       #{r.block_id}
                     </td>
                     <td style={{ padding: '0.6rem 1rem' }}>
@@ -185,16 +183,16 @@ export default function AuditLog() {
                         {r.success ? '✓ VERIFIED' : 'FAILED'}
                       </span>
                     </td>
-                    <td style={{ padding: '0.6rem 1rem', color: '#cbd5e1' }}>
+                    <td style={{ padding: '0.6rem 1rem', color: 'var(--text-secondary)' }}>
                       <code>{r.source || 'None'}</code>
                     </td>
-                    <td style={{ padding: '0.6rem 1rem', color: '#f8fafc' }}>
+                    <td style={{ padding: '0.6rem 1rem', color: 'var(--text-primary)' }}>
                       {r.owning_file || '—'}
                     </td>
-                    <td style={{ padding: '0.6rem 1rem', color: '#94a3b8', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                    <td style={{ padding: '0.6rem 1rem', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '0.75rem' }}>
                       {r.expected_hash ? `${r.expected_hash.slice(0, 12)}…` : '—'}
                     </td>
-                    <td style={{ padding: '0.6rem 1rem', color: '#94a3b8', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                    <td style={{ padding: '0.6rem 1rem', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '0.75rem' }}>
                       {r.recovered_hash ? `${r.recovered_hash.slice(0, 12)}…` : '—'}
                     </td>
                   </tr>
@@ -224,7 +222,7 @@ export default function AuditLog() {
 
         <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           {localEvents.length === 0 ? (
-            <div style={{ padding: '1rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+            <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
               No operations performed in this session yet.
             </div>
           ) : (
@@ -234,7 +232,7 @@ export default function AuditLog() {
                 style={{
                   padding: '0.5rem 0.75rem',
                   borderRadius: '4px',
-                  background: 'rgba(30, 41, 59, 0.4)',
+                  background: 'var(--bg-panel)',
                   fontSize: '0.8rem',
                   display: 'flex',
                   justifyContent: 'space-between',
@@ -242,10 +240,10 @@ export default function AuditLog() {
                 }}
               >
                 <div>
-                  <span style={{ fontWeight: 600, color: '#f8fafc', marginRight: 8 }}>{evt.operation}</span>
-                  <span style={{ color: '#94a3b8' }}>{evt.message}</span>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)', marginRight: 8 }}>{evt.operation}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{evt.message}</span>
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   {evt.timestamp}
                 </div>
               </div>

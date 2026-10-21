@@ -501,8 +501,8 @@ export default function LiveHealingDemo() {
               value={selectedFile}
               onChange={e => { setSelectedFile(e.target.value); setSelectedBlockIdx(0); handleReset() }}
               style={{
-                background: '#1e293b', color: '#f1f5f9',
-                border: '1px solid #334155', padding: '6px 12px',
+                background: 'var(--bg-input)', color: 'var(--text-primary)',
+                border: '1px solid var(--border-base)', padding: '6px 12px',
                 borderRadius: '6px', fontSize: '0.85rem', minWidth: '200px',
               }}
             >
@@ -517,14 +517,14 @@ export default function LiveHealingDemo() {
 
           {selectedFileObj && selectedFileObj.block_ids?.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <label style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Block to Corrupt</label>
+              <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Block to Corrupt</label>
               <select
                 id="live-heal-block-select"
                 value={selectedBlockIdx}
                 onChange={e => { setSelectedBlockIdx(parseInt(e.target.value)); handleReset() }}
                 style={{
-                  background: '#1e293b', color: '#f1f5f9',
-                  border: '1px solid #334155', padding: '6px 12px',
+                  background: 'var(--bg-input)', color: 'var(--text-primary)',
+                  border: '1px solid var(--border-base)', padding: '6px 12px',
                   borderRadius: '6px', fontSize: '0.85rem',
                 }}
               >
@@ -592,7 +592,7 @@ export default function LiveHealingDemo() {
             </button>
             {phase === 'repaired' && (
               <button onClick={handleReset} style={{
-                background: '#334155', color: '#f1f5f9', border: 'none',
+                background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border-base)',
                 padding: '7px 14px', borderRadius: '7px', fontSize: '0.85rem', cursor: 'pointer'
               }}>↺ Reset</button>
             )}
@@ -616,14 +616,14 @@ export default function LiveHealingDemo() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             {/* Left: File info + content preview */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <div style={{ background: 'rgba(15,23,42,0.7)', borderRadius: '8px', padding: '0.75rem', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, marginBottom: '0.5rem' }}>FILE INFO</div>
+              <div style={{ background: 'var(--bg-panel)', borderRadius: '8px', padding: '0.75rem', border: '1px solid var(--border-dim)' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.5rem' }}>FILE INFO</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '4px', fontSize: '0.78rem' }}>
-                  <span style={{ color: '#64748b' }}>File:</span><span style={{ color: '#f1f5f9', fontWeight: 600 }}>{baseline.filename}</span>
-                  <span style={{ color: '#64748b' }}>Size:</span><span style={{ color: '#cbd5e1' }}>{baseline.file_size} bytes</span>
-                  <span style={{ color: '#64748b' }}>Blocks:</span><span style={{ color: '#cbd5e1' }}>{baseline.num_blocks} physical blocks</span>
-                  <span style={{ color: '#64748b' }}>Target:</span><span style={{ color: '#38bdf8', fontFamily: 'monospace' }}>Block #{baseline.target_block_id} (index {baseline.target_block_index})</span>
-                  <span style={{ color: '#64748b' }}>Hash:</span><span style={{ color: '#10b981', fontFamily: 'monospace', fontSize: '0.65rem', wordBreak: 'break-all' }}>{baseline.block_hash.slice(0, 32)}…</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>File:</span><span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{baseline.filename}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Size:</span><span style={{ color: 'var(--text-secondary)' }}>{baseline.file_size} bytes</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Blocks:</span><span style={{ color: 'var(--text-secondary)' }}>{baseline.num_blocks} physical blocks</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Target:</span><span style={{ color: 'var(--accent)', fontFamily: 'monospace' }}>Block #{baseline.target_block_id} (index {baseline.target_block_index})</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Hash:</span><span style={{ color: '#10b981', fontFamily: 'monospace', fontSize: '0.65rem', wordBreak: 'break-all' }}>{baseline.block_hash.slice(0, 32)}…</span>
                 </div>
               </div>
 
@@ -890,10 +890,10 @@ export default function LiveHealingDemo() {
 
               {/* ── FINAL BEFORE / AFTER COMPARISON ── */}
               <div style={{
-                background: 'rgba(15,23,42,0.9)', border: '1px solid rgba(255,255,255,0.08)',
+                background: 'var(--bg-panel)', border: '1px solid var(--border-dim)',
                 borderRadius: '10px', padding: '1rem',
               }}>
-                <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#f8fafc', marginBottom: '0.75rem', textAlign: 'center' }}>
+                <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.75rem', textAlign: 'center' }}>
                   📊 Full Before vs After Comparison
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0.75rem', alignItems: 'stretch' }}>

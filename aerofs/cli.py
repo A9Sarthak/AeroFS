@@ -4,6 +4,8 @@ Provides a Unix-like interactive shell for hands-on OS storage experimentation
 and an automated guided demonstration mode for academic / viva presentations.
 """
 
+import io
+import contextlib
 import sys
 import time
 import shlex
@@ -98,21 +100,330 @@ def render_block_map_ascii(fs: Any, max_blocks: int = 256):
     print()
 
 
-def print_stats(fs: AeroFileSystem):
-    disk = fs.dev.get_stats()
-    dedup = fs.dedup.get_stats()
+def print_stats(fs: Any):
+    if hasattr(fs, "dev"):
+        disk = fs.dev.get_stats()
+        dedup = fs.dedup.get_stats()
+        num_files = len(fs.files)
+        num_snaps = len(fs.snapshots)
+        corrupted_count = len(fs.dev.corrupted_blocks)
+    else:
+        telemetry = fs.get_telemetry()
+        disk = telemetry.get("disk", {})
+        dedup = telemetry.get("deduplication", {})
+        num_files = len(telemetry.get("files", []))
+        num_snaps = len(telemetry.get("snapshots", []))
+        corrupted_count = telemetry.get("health", {}).get("corrupted_blocks_count", 0)
+
     print(f"\n{Colors.BOLD}{Colors.CYAN}--- AeroFS Subsystem Telemetry ---{Colors.RESET}")
-    print(f"  Physical Capacity:       {format_bytes(disk['capacity_bytes'])} ({disk['total_blocks']} blocks @ {disk['block_size']} B)")
-    print(f"  Allocated Blocks:        {disk['allocated_blocks']} / {disk['total_blocks']} ({disk['utilization_percent']}%)")
-    print(f"  Free Blocks:             {disk['free_blocks']}")
-    print(f"  Corrupted Blocks:        {len(fs.dev.corrupted_blocks)}")
-    print(f"  Logical Blocks Written:  {dedup['logical_blocks_written']}")
-    print(f"  Unique Physical Blocks:  {dedup['physical_unique_blocks']}")
-    print(f"  CAS Deduplication Hits:  {dedup['dedup_hits']}")
-    print(f"  Storage Saved:           {format_bytes(dedup['bytes_saved'])} ({dedup['savings_percent']}%)")
-    print(f"  Deduplication Ratio:     {dedup['dedup_ratio']}x")
-    print(f"  Active Files:            {len(fs.files)}")
-    print(f"  Active Snapshots:        {len(fs.snapshots)}\n")
+    print(f"  Physical Capacity:       {format_bytes(disk.get('capacity_bytes', 0))} ({disk.get('total_blocks', 0)} blocks @ {disk.get('block_size', 4096)} B)")
+    print(f"  Allocated Blocks:        {disk.get('allocated_blocks', 0)} / {disk.get('total_blocks', 0)} ({disk.get('utilization_percent', 0)}%)")
+    print(f"  Free Blocks:             {disk.get('free_blocks', 0)}")
+    print(f"  Corrupted Blocks:        {corrupted_count}")
+    print(f"  Logical Blocks Written:  {dedup.get('logical_blocks_written', 0)}")
+    print(f"  Unique Physical Blocks:  {dedup.get('physical_unique_blocks', 0)}")
+    print(f"  CAS Deduplication Hits:  {dedup.get('dedup_hits', 0)}")
+    print(f"  Storage Saved:           {format_bytes(dedup.get('bytes_saved', 0))} ({dedup.get('savings_percent', 0)}%)")
+    print(f"  Deduplication Ratio:     {dedup.get('dedup_ratio', 1.0)}x")
+    print(f"  Active Files:            {num_files}")
+    print(f"  Active Snapshots:        {num_snaps}\n")
+
+
+def dispatch_command(fs: Any, raw_prompt: str) -> bool:
+    """
+    Dispatches a single command string against fs.
+    Returns False if user typed exit/quit, True otherwise.
+    """
+    raw_prompt = raw_prompt.strip()
+    if not raw_prompt:
+        return True
+
+    try:
+        parts = shlex.split(raw_prompt)
+    except ValueError as e:
+        print(f"{Colors.RED}Syntax error in command: {e}{Colors.RESET}")
+        return True
+
+    if not parts:
+        return True
+
+    cmd = parts[0].lower()
+    args = parts[1:]
+
+    if cmd in ("exit", "quit", "q"):
+        print(f"{Colors.YELLOW}[*] Shutting down AeroFS storage subsystem. Goodbye!{Colors.RESET}")
+        return False
+
+    elif cmd == "help":
+        print(f"""
+{Colors.BOLD}Available AeroFS Commands:{Colors.RESET}
+  {Colors.CYAN}ls{Colors.RESET}                         List all files, inodes, sizes, and Merkle roots
+  {Colors.CYAN}cat <file>{Colors.RESET}                 Display content of a file
+  {Colors.CYAN}write <file> "<text>"{Colors.RESET}     Write/update file with CoW and CAS deduplication
+  {Colors.CYAN}rm <file>{Colors.RESET}                  Delete file (reclaims blocks if not in snapshots)
+  {Colors.CYAN}snap create <name>{Colors.RESET}         Create instant O(1) zero-copy point-in-time snapshot
+  {Colors.CYAN}snap list{Colors.RESET}                  List all captured snapshots
+  {Colors.CYAN}snap restore <name>{Colors.RESET}        Restore active filesystem state to snapshot
+  {Colors.CYAN}snap delete <name>{Colors.RESET}         Delete snapshot
+  {Colors.CYAN}inspect <file>{Colors.RESET}             Display detailed file audit & block mapping
+  {Colors.CYAN}tree <file>{Colors.RESET}                Render hierarchical binary Merkle Tree diagram
+  {Colors.CYAN}block <id>{Colors.RESET}                 Inspect raw physical block metadata and refcount
+  {Colors.CYAN}map{Colors.RESET}                        Render ASCII physical disk allocation matrix
+  {Colors.CYAN}stats{Colors.RESET}                      Display capacity, CAS dedup ratio, and telemetry
+  {Colors.CYAN}scrub{Colors.RESET}                      Run cryptographic Merkle Tree audit across all files
+  {Colors.CYAN}corrupt [block_id]{Colors.RESET}         Simulate silent physical bit-rot data decay
+  {Colors.CYAN}heal{Colors.RESET}                       Execute self-healing engine to restore corrupted blocks
+  {Colors.CYAN}benchmark{Colors.RESET}                  Run scientific comparative benchmark suite
+  {Colors.CYAN}clear{Colors.RESET}                      Clear terminal display
+  {Colors.CYAN}whoami{Colors.RESET}                     Display current storage identity
+  {Colors.CYAN}uname{Colors.RESET}                      Display AeroFS kernel and engine version
+  {Colors.CYAN}pwd{Colors.RESET}                        Display current root directory
+  {Colors.CYAN}exit{Colors.RESET}                       Exit AeroFS shell
+""")
+
+    elif cmd in ("ls", "dir"):
+        files = fs.list_files()
+        if not files:
+            print(f"  {Colors.YELLOW}[No files in filesystem]{Colors.RESET}")
+        else:
+            print(f"\n  {'INODE':<7} {'FILENAME':<22} {'SIZE':<10} {'BLOCKS':<8} {'MERKLE ROOT':<20}")
+            print("  " + "-" * 70)
+            for f in files:
+                m_short = f['merkle_root'][:16] + "..." if f.get('merkle_root') else "N/A"
+                print(f"  #{f['inode_id']:<6} {f['name']:<22} {format_bytes(f['size']):<10} {f['num_blocks']:<8} {m_short:<20}")
+            print()
+
+    elif cmd in ("cat", "read"):
+        if not args:
+            print(f"{Colors.RED}Usage: cat <filename>{Colors.RESET}")
+            return True
+        filename = args[0]
+        try:
+            content = fs.read_file(filename)
+            text = content.decode("utf-8", errors="replace")
+            print(f"\n{Colors.CYAN}--- {filename} ({len(content)} bytes) ---{Colors.RESET}")
+            print(text)
+            print(f"{Colors.CYAN}--- End of File ---{Colors.RESET}\n")
+        except FileNotFoundError:
+            print(f"{Colors.RED}Error: File '{filename}' not found.{Colors.RESET}")
+        except (IOError, IntegrityError) as e:
+            print(f"{Colors.RED}[EIO] Read refused — unrecoverable integrity failure: {e}{Colors.RESET}")
+
+    elif cmd == "write":
+        if len(args) < 2:
+            print(f"{Colors.RED}Usage: write <filename> \"<content>\"{Colors.RESET}")
+            return True
+        filename = args[0]
+        content = args[1].encode("utf-8")
+        inode, dedup_cnt = fs.write_file(filename, content)
+        b_cnt = len(inode.block_ids) if hasattr(inode, "block_ids") else len(inode.get("block_ids", []))
+        m_root = inode.merkle_root if hasattr(inode, "merkle_root") else inode.get("merkle_root", "")
+        print(f"{Colors.GREEN}[+] Wrote '{filename}'{Colors.RESET} (Size: {len(content)} B, Blocks: {b_cnt}, Deduped Chunks: {dedup_cnt})")
+        if m_root:
+            print(f"    Merkle Root: {m_root}")
+
+    elif cmd in ("rm", "delete"):
+        if not args:
+            print(f"{Colors.RED}Usage: rm <filename>{Colors.RESET}")
+            return True
+        filename = args[0]
+        if fs.delete_file(filename):
+            print(f"{Colors.GREEN}[+] Deleted '{filename}'.{Colors.RESET}")
+        else:
+            print(f"{Colors.RED}Error: File '{filename}' not found.{Colors.RESET}")
+
+    elif cmd == "snap":
+        if not args:
+            print(f"{Colors.RED}Usage: snap <create|list|restore|delete> [name]{Colors.RESET}")
+            return True
+        sub = args[0].lower()
+        if sub == "create":
+            if len(args) < 2:
+                print(f"{Colors.RED}Usage: snap create <name>{Colors.RESET}")
+                return True
+            name = args[1]
+            try:
+                t0 = time.perf_counter()
+                snap = fs.create_snapshot(name)
+                elapsed_ms = (time.perf_counter() - t0) * 1000
+                f_count = snap.get("file_count", len(snap.get("inodes", {})))
+                print(f"{Colors.GREEN}[+] Snapshot '{name}' created in {elapsed_ms:.3f} ms!{Colors.RESET} ({f_count} files frozen)")
+            except ValueError as e:
+                print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+        elif sub == "list":
+            snaps = fs.list_snapshots()
+            if not snaps:
+                print(f"  {Colors.YELLOW}[No snapshots captured]{Colors.RESET}")
+            else:
+                print(f"\n  {'SNAPSHOT':<20} {'FILES':<8} {'SIZE':<10} {'CREATED AT':<20}")
+                print("  " + "-" * 60)
+                for s in snaps:
+                    print(f"  {s['name']:<20} {s['file_count']:<8} {format_bytes(s['total_size']):<10} {s['created_at']:<20}")
+                print()
+        elif sub == "restore":
+            if len(args) < 2:
+                print(f"{Colors.RED}Usage: snap restore <name>{Colors.RESET}")
+                return True
+            name = args[1]
+            try:
+                fs.restore_snapshot(name)
+                print(f"{Colors.GREEN}[+] Filesystem successfully rolled back to snapshot '{name}'.{Colors.RESET}")
+            except (KeyError, ValueError) as e:
+                print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+        elif sub == "delete":
+            if len(args) < 2:
+                print(f"{Colors.RED}Usage: snap delete <name>{Colors.RESET}")
+                return True
+            name = args[1]
+            if fs.delete_snapshot(name):
+                print(f"{Colors.GREEN}[+] Snapshot '{name}' deleted.{Colors.RESET}")
+            else:
+                print(f"{Colors.RED}Error: Snapshot '{name}' not found.{Colors.RESET}")
+
+    elif cmd == "tree":
+        if not args:
+            print(f"{Colors.RED}Usage: tree <filename>{Colors.RESET}")
+            return True
+        filename = args[0]
+        try:
+            insp = fs.inspect_file(filename)
+            print(f"\n{Colors.BOLD}{Colors.CYAN}Cryptographic Merkle Tree for '{filename}':{Colors.RESET}")
+            print(insp.get("ascii_tree", "No tree available"))
+            print()
+        except FileNotFoundError as e:
+            print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+
+    elif cmd == "inspect":
+        if not args:
+            print(f"{Colors.RED}Usage: inspect <filename>{Colors.RESET}")
+            return True
+        filename = args[0]
+        try:
+            insp = fs.inspect_file(filename)
+            status_str = f"{Colors.GREEN}HEALTHY{Colors.RESET}" if insp.get("is_healthy") else f"{Colors.RED}CORRUPTED{Colors.RESET}"
+            inode_info = insp.get("inode", {})
+            print(f"\n{Colors.BOLD}{Colors.CYAN}--- File Inode Inspection: {filename} ---{Colors.RESET}")
+            print(f"  Status:          {status_str}")
+            print(f"  Inode ID:        #{inode_info.get('inode_id', '?')}")
+            print(f"  Logical Size:    {format_bytes(inode_info.get('size', 0))}")
+            print(f"  Physical Blocks: {inode_info.get('block_ids', [])}")
+            print(f"  Merkle Root:     {inode_info.get('merkle_root', 'N/A')}")
+            if insp.get("corrupted_blocks"):
+                print(f"  {Colors.RED}Damaged Blocks:  {insp['corrupted_blocks']}{Colors.RESET}")
+            print()
+        except FileNotFoundError as e:
+            print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+
+    elif cmd == "block":
+        if not args:
+            print(f"{Colors.RED}Usage: block <block_id>{Colors.RESET}")
+            return True
+        try:
+            bid = int(args[0])
+            details = fs.get_block_details(bid)
+            alloc_str = f"{Colors.GREEN}Allocated{Colors.RESET}" if details.get("is_allocated") else f"{Colors.YELLOW}Free{Colors.RESET}"
+            corrupt_str = f"{Colors.RED}YES (Bit-Rot){Colors.RESET}" if details.get("is_corrupted") else f"{Colors.GREEN}No{Colors.RESET}"
+            print(f"\n{Colors.BOLD}{Colors.CYAN}--- Physical Sector #{bid} Details ---{Colors.RESET}")
+            print(f"  Allocation State:  {alloc_str}")
+            print(f"  Corrupted:         {corrupt_str}")
+            print(f"  Reference Count:   {details.get('refcount', 0)}")
+            print(f"  Expected CAS Hash: {details.get('expected_hash', 'None')}")
+            print(f"  Actual Disk Hash:  {details.get('actual_hash', 'None')}")
+            print(f"  Referenced by:     {details.get('referencing_files') or 'None'}")
+            print(f"  In Snapshots:      {details.get('referencing_snapshots') or 'None'}\n")
+        except ValueError:
+            print(f"{Colors.RED}Error: Block ID must be an integer.{Colors.RESET}")
+        except (IndexError, KeyError) as e:
+            print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+
+    elif cmd == "map":
+        render_block_map_ascii(fs)
+
+    elif cmd == "stats":
+        print_stats(fs)
+
+    elif cmd == "scrub":
+        print("[*] Running Merkle-Tree cryptographic audit across storage subsystem...")
+        report = fs.scrub_all()
+        if report.get("status") == "HEALTHY":
+            print(f"{Colors.GREEN}[✓] Storage Audit Clean: Verified {report.get('files_audited', 0)} file(s). 0 corruptions detected.{Colors.RESET}\n")
+        else:
+            print(f"{Colors.RED}[!] Integrity Failure: Found {report.get('corrupted_blocks_total', 0)} damaged block(s)!{Colors.RESET}")
+            for d in report.get("details", []):
+                if d.get("status") == "CORRUPTED":
+                    print(f"    • File '{d.get('file')}': Damaged blocks {d.get('corrupted_blocks')}")
+            print()
+
+    elif cmd == "corrupt":
+        if args:
+            try:
+                bid = int(args[0])
+                if hasattr(fs, "dev"):
+                    fs.dev.inject_bit_rot(bid)
+                else:
+                    fs.inject_bit_rot(bid)
+                print(f"{Colors.YELLOW}[!] Injected simulated bit-rot into block #{bid}.{Colors.RESET}")
+            except Exception as e:
+                print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+        else:
+            if hasattr(fs, "dev"):
+                allocated = [b for b in range(fs.dev.data_start_block, fs.dev.total_blocks)
+                             if fs.dev.is_block_allocated(b) and b not in fs.dev.corrupted_blocks]
+                if not allocated:
+                    print(f"{Colors.RED}Error: No allocated data blocks available to corrupt.{Colors.RESET}")
+                else:
+                    import random
+                    bid = random.choice(allocated)
+                    fs.dev.inject_bit_rot(bid)
+                    print(f"{Colors.YELLOW}[!] Injected simulated bit-rot into block #{bid}. Run 'scrub' to detect!{Colors.RESET}")
+            else:
+                res = fs.inject_bit_rot()
+                print(f"{Colors.YELLOW}[!] Injected simulated bit-rot into block #{res.get('block_id', '?')}.{Colors.RESET}")
+
+    elif cmd == "heal":
+        print("[*] Running AeroFS Autonomous Self-Healing Subsystem...")
+        result = fs.self_heal_all()
+        repaired_cnt = result.get("repaired_count", result.get("healed_count", len(result.get("records", []))))
+        if repaired_cnt > 0:
+            repaired_blocks = result.get("repaired_blocks", [r.get("block_id") for r in result.get("records", [])])
+            print(f"{Colors.GREEN}[✓] Self-Healed {repaired_cnt} block(s): {repaired_blocks}{Colors.RESET}")
+            post_status = result.get("post_heal_status", result.get("status", "OK"))
+            print(f"    Post-Heal Storage Status: {Colors.GREEN}{post_status}{Colors.RESET}\n")
+        else:
+            print(f"{Colors.CYAN}[*] No corrupted blocks detected. Subsystem healthy.{Colors.RESET}\n")
+
+    elif cmd == "pwd":
+        print("/")
+
+    elif cmd == "whoami":
+        print("root@aerofs-kernel")
+
+    elif cmd == "uname":
+        print("AeroFS 2.0.0-release x86_64 CoW-CAS-Merkle OS Storage Subsystem")
+
+    elif cmd == "clear":
+        print("\033[2J\033[H", end="")
+
+    elif cmd == "benchmark":
+        run_benchmarks()
+
+    elif cmd == "demo":
+        run_automated_demo(fs)
+
+    else:
+        print(f"{Colors.RED}Unknown command '{cmd}'. Type 'help' for available commands.{Colors.RESET}")
+
+    return True
+
+
+def execute_cli_command(fs: Any, raw_prompt: str) -> str:
+    """
+    Executes a command and returns the captured terminal output as a string.
+    """
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        dispatch_command(fs, raw_prompt)
+    return buf.getvalue()
 
 
 def run_interactive_cli(disk_path: str = "aerofs_cli_disk.bin", server_url: Optional[str] = "http://127.0.0.1:8000"):
@@ -134,243 +445,14 @@ def run_interactive_cli(disk_path: str = "aerofs_cli_disk.bin", server_url: Opti
                 continue
 
             parts = shlex.split(raw_prompt)
-            cmd = parts[0].lower()
-            args = parts[1:]
-
+            cmd = parts[0].lower() if parts else ""
             if cmd in ("exit", "quit", "q"):
                 print(f"{Colors.YELLOW}[*] Shutting down AeroFS storage subsystem. Goodbye!{Colors.RESET}")
                 break
 
-            elif cmd == "help":
-                print(f"""
-{Colors.BOLD}Available AeroFS Commands:{Colors.RESET}
-  {Colors.CYAN}ls{Colors.RESET}                         List all files, inodes, sizes, and Merkle roots
-  {Colors.CYAN}cat <file>{Colors.RESET}                 Display content of a file
-  {Colors.CYAN}write <file> "<text>"{Colors.RESET}     Write/update file with CoW and CAS deduplication
-  {Colors.CYAN}rm <file>{Colors.RESET}                  Delete file (reclaims blocks if not in snapshots)
-  {Colors.CYAN}snap create <name>{Colors.RESET}         Create instant O(1) zero-copy point-in-time snapshot
-  {Colors.CYAN}snap list{Colors.RESET}                  List all captured snapshots
-  {Colors.CYAN}snap restore <name>{Colors.RESET}        Restore active filesystem state to snapshot
-  {Colors.CYAN}snap delete <name>{Colors.RESET}         Delete snapshot
-  {Colors.CYAN}inspect <file>{Colors.RESET}             Display detailed file audit & block mapping
-  {Colors.CYAN}tree <file>{Colors.RESET}                Render hierarchical binary Merkle Tree diagram
-  {Colors.CYAN}block <id>{Colors.RESET}                 Inspect raw physical block metadata and refcount
-  {Colors.CYAN}map{Colors.RESET}                        Render ASCII physical disk allocation matrix
-  {Colors.CYAN}stats{Colors.RESET}                      Display capacity, CAS dedup ratio, and telemetry
-  {Colors.CYAN}scrub{Colors.RESET}                      Run cryptographic Merkle Tree audit across all files
-  {Colors.CYAN}corrupt [block_id]{Colors.RESET}         Simulate silent physical bit-rot data decay
-  {Colors.CYAN}heal{Colors.RESET}                       Execute self-healing engine to restore corrupted blocks
-  {Colors.CYAN}benchmark{Colors.RESET}                  Run scientific comparative benchmark suite
-  {Colors.CYAN}demo{Colors.RESET}                       Run interactive guided teacher demonstration
-  {Colors.CYAN}exit{Colors.RESET}                       Exit AeroFS shell
-""")
-
-            elif cmd == "ls":
-                files = fs.list_files()
-                if not files:
-                    print(f"  {Colors.YELLOW}[No files in filesystem]{Colors.RESET}")
-                else:
-                    print(f"\n  {'INODE':<7} {'FILENAME':<22} {'SIZE':<10} {'BLOCKS':<8} {'MERKLE ROOT':<20}")
-                    print("  " + "-" * 70)
-                    for f in files:
-                        m_short = f['merkle_root'][:16] + "..." if f['merkle_root'] else "N/A"
-                        print(f"  #{f['inode_id']:<6} {f['name']:<22} {format_bytes(f['size']):<10} {f['num_blocks']:<8} {m_short:<20}")
-                    print()
-
-            elif cmd in ("cat", "read"):
-                if not args:
-                    print(f"{Colors.RED}Usage: cat <filename>{Colors.RESET}")
-                    continue
-                filename = args[0]
-                try:
-                    content = fs.read_file(filename)
-                    text = content.decode("utf-8", errors="replace")
-                    print(f"\n{Colors.CYAN}--- {filename} ({len(content)} bytes) ---{Colors.RESET}")
-                    print(text)
-                    print(f"{Colors.CYAN}--- End of File ---{Colors.RESET}\n")
-                except FileNotFoundError:
-                    print(f"{Colors.RED}Error: File '{filename}' not found.{Colors.RESET}")
-                except (IOError, IntegrityError) as e:
-                    print(f"{Colors.RED}[EIO] Read refused — unrecoverable integrity failure: {e}{Colors.RESET}")
-
-
-            elif cmd == "write":
-                if len(args) < 2:
-                    print(f"{Colors.RED}Usage: write <filename> \"<content>\"{Colors.RESET}")
-                    continue
-                filename = args[0]
-                content = args[1].encode("utf-8")
-                inode, dedup_cnt = fs.write_file(filename, content)
-                print(f"{Colors.GREEN}[+] Wrote '{filename}'{Colors.RESET} (Size: {len(content)} B, Blocks: {len(inode.block_ids)}, Deduped Chunks: {dedup_cnt})")
-                print(f"    Merkle Root: {inode.merkle_root}")
-
-            elif cmd in ("rm", "delete"):
-                if not args:
-                    print(f"{Colors.RED}Usage: rm <filename>{Colors.RESET}")
-                    continue
-                filename = args[0]
-                if fs.delete_file(filename):
-                    print(f"{Colors.GREEN}[+] Deleted '{filename}'.{Colors.RESET}")
-                else:
-                    print(f"{Colors.RED}Error: File '{filename}' not found.{Colors.RESET}")
-
-            elif cmd == "snap":
-                if not args:
-                    print(f"{Colors.RED}Usage: snap <create|list|restore|delete> [name]{Colors.RESET}")
-                    continue
-                sub = args[0].lower()
-                if sub == "create":
-                    if len(args) < 2:
-                        print(f"{Colors.RED}Usage: snap create <name>{Colors.RESET}")
-                        continue
-                    name = args[1]
-                    try:
-                        t0 = time.perf_counter()
-                        snap = fs.create_snapshot(name)
-                        elapsed_ms = (time.perf_counter() - t0) * 1000
-                        print(f"{Colors.GREEN}[+] Snapshot '{name}' created in {elapsed_ms:.3f} ms!{Colors.RESET} ({snap['file_count']} files frozen)")
-                    except ValueError as e:
-                        print(f"{Colors.RED}Error: {e}{Colors.RESET}")
-                elif sub == "list":
-                    snaps = fs.list_snapshots()
-                    if not snaps:
-                        print(f"  {Colors.YELLOW}[No snapshots captured]{Colors.RESET}")
-                    else:
-                        print(f"\n  {'SNAPSHOT':<20} {'FILES':<8} {'SIZE':<10} {'CREATED AT':<20}")
-                        print("  " + "-" * 60)
-                        for s in snaps:
-                            print(f"  {s['name']:<20} {s['file_count']:<8} {format_bytes(s['total_size']):<10} {s['created_at']:<20}")
-                        print()
-                elif sub == "restore":
-                    if len(args) < 2:
-                        print(f"{Colors.RED}Usage: snap restore <name>{Colors.RESET}")
-                        continue
-                    name = args[1]
-                    try:
-                        fs.restore_snapshot(name)
-                        print(f"{Colors.GREEN}[+] Filesystem successfully rolled back to snapshot '{name}'.{Colors.RESET}")
-                    except KeyError as e:
-                        print(f"{Colors.RED}Error: {e}{Colors.RESET}")
-                elif sub == "delete":
-                    if len(args) < 2:
-                        print(f"{Colors.RED}Usage: snap delete <name>{Colors.RESET}")
-                        continue
-                    name = args[1]
-                    if fs.delete_snapshot(name):
-                        print(f"{Colors.GREEN}[+] Snapshot '{name}' deleted.{Colors.RESET}")
-                    else:
-                        print(f"{Colors.RED}Error: Snapshot '{name}' not found.{Colors.RESET}")
-
-            elif cmd == "tree":
-                if not args:
-                    print(f"{Colors.RED}Usage: tree <filename>{Colors.RESET}")
-                    continue
-                filename = args[0]
-                try:
-                    insp = fs.inspect_file(filename)
-                    print(f"\n{Colors.BOLD}{Colors.CYAN}Cryptographic Merkle Tree for '{filename}':{Colors.RESET}")
-                    print(insp["ascii_tree"])
-                    print()
-                except FileNotFoundError as e:
-                    print(f"{Colors.RED}Error: {e}{Colors.RESET}")
-
-            elif cmd == "inspect":
-                if not args:
-                    print(f"{Colors.RED}Usage: inspect <filename>{Colors.RESET}")
-                    continue
-                filename = args[0]
-                try:
-                    insp = fs.inspect_file(filename)
-                    status_str = f"{Colors.GREEN}HEALTHY{Colors.RESET}" if insp["is_healthy"] else f"{Colors.RED}CORRUPTED{Colors.RESET}"
-                    print(f"\n{Colors.BOLD}{Colors.CYAN}--- File Inode Inspection: {filename} ---{Colors.RESET}")
-                    print(f"  Status:          {status_str}")
-                    print(f"  Inode ID:        #{insp['inode']['inode_id']}")
-                    print(f"  Logical Size:    {format_bytes(insp['inode']['size'])}")
-                    print(f"  Physical Blocks: {insp['inode']['block_ids']}")
-                    print(f"  Merkle Root:     {insp['inode']['merkle_root']}")
-                    if insp["corrupted_blocks"]:
-                        print(f"  {Colors.RED}Damaged Blocks:  {insp['corrupted_blocks']}{Colors.RESET}")
-                    print()
-                except FileNotFoundError as e:
-                    print(f"{Colors.RED}Error: {e}{Colors.RESET}")
-
-            elif cmd == "block":
-                if not args:
-                    print(f"{Colors.RED}Usage: block <block_id>{Colors.RESET}")
-                    continue
-                try:
-                    bid = int(args[0])
-                    details = fs.get_block_details(bid)
-                    alloc_str = f"{Colors.GREEN}Allocated{Colors.RESET}" if details["is_allocated"] else f"{Colors.YELLOW}Free{Colors.RESET}"
-                    corrupt_str = f"{Colors.RED}YES (Bit-Rot){Colors.RESET}" if details["is_corrupted"] else f"{Colors.GREEN}No{Colors.RESET}"
-                    print(f"\n{Colors.BOLD}{Colors.CYAN}--- Physical Sector #{bid} Details ---{Colors.RESET}")
-                    print(f"  Allocation State:  {alloc_str}")
-                    print(f"  Corrupted:         {corrupt_str}")
-                    print(f"  Reference Count:   {details['refcount']}")
-                    print(f"  Expected CAS Hash: {details['expected_hash']}")
-                    print(f"  Actual Disk Hash:  {details['actual_hash']}")
-                    print(f"  Referenced by:     {details['referencing_files'] or 'None'}")
-                    print(f"  In Snapshots:      {details['referencing_snapshots'] or 'None'}\n")
-                except ValueError:
-                    print(f"{Colors.RED}Error: Block ID must be an integer.{Colors.RESET}")
-                except IndexError as e:
-                    print(f"{Colors.RED}Error: {e}{Colors.RESET}")
-
-            elif cmd == "map":
-                render_block_map_ascii(fs)
-
-            elif cmd == "stats":
-                print_stats(fs)
-
-            elif cmd == "scrub":
-                print(f"[*] Running Merkle-Tree cryptographic audit across storage subsystem...")
-                report = fs.scrub_all()
-                if report["status"] == "HEALTHY":
-                    print(f"{Colors.GREEN}[✓] Storage Audit Clean: Verified {report['files_audited']} file(s). 0 corruptions detected.{Colors.RESET}\n")
-                else:
-                    print(f"{Colors.RED}[!] Integrity Failure: Found {report['corrupted_blocks_total']} damaged block(s)!{Colors.RESET}")
-                    for d in report["details"]:
-                        if d["status"] == "CORRUPTED":
-                            print(f"    • File '{d['file']}': Damaged blocks {d['corrupted_blocks']}")
-                    print()
-
-            elif cmd == "corrupt":
-                if args:
-                    try:
-                        bid = int(args[0])
-                        fs.dev.inject_bit_rot(bid)
-                        print(f"{Colors.YELLOW}[!] Injected simulated bit-rot into block #{bid}.{Colors.RESET}")
-                    except Exception as e:
-                        print(f"{Colors.RED}Error: {e}{Colors.RESET}")
-                else:
-                    # Pick random allocated block
-                    allocated = [b for b in range(fs.dev.data_start_block, fs.dev.total_blocks)
-                                 if fs.dev.is_block_allocated(b) and b not in fs.dev.corrupted_blocks]
-                    if not allocated:
-                        print(f"{Colors.RED}Error: No allocated data blocks available to corrupt.{Colors.RESET}")
-                    else:
-                        import random
-                        bid = random.choice(allocated)
-                        fs.dev.inject_bit_rot(bid)
-                        print(f"{Colors.YELLOW}[!] Injected simulated bit-rot into block #{bid}. Run 'scrub' to detect!{Colors.RESET}")
-
-            elif cmd == "heal":
-                print(f"[*] Running AeroFS Autonomous Self-Healing Subsystem...")
-                result = fs.self_heal_all()
-                if result["repaired_count"] > 0:
-                    print(f"{Colors.GREEN}[✓] Self-Healed {result['repaired_count']} block(s): {result['repaired_blocks']}{Colors.RESET}")
-                    print(f"    Post-Heal Storage Status: {Colors.GREEN}{result['post_heal_status']}{Colors.RESET}\n")
-                else:
-                    print(f"{Colors.CYAN}[*] No corrupted blocks detected. Subsystem healthy.{Colors.RESET}\n")
-
-            elif cmd == "benchmark":
-                run_benchmarks()
-
-            elif cmd == "demo":
-                run_automated_demo(fs)
-
-            else:
-                print(f"{Colors.RED}Unknown command '{cmd}'. Type 'help' for available commands.{Colors.RESET}")
+            output = execute_cli_command(fs, raw_prompt)
+            if output:
+                print(output, end="" if output.endswith("\n") else "\n")
 
         except (KeyboardInterrupt, EOFError):
             print(f"\n{Colors.YELLOW}[*] Exiting AeroFS shell.{Colors.RESET}")

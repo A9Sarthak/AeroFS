@@ -53,14 +53,23 @@ class Snapshot:
         # Deepcopy of inodes preserves exact block pointer map at this instant
         self.inodes: Dict[str, FileInode] = copy.deepcopy(inodes_snapshot)
 
+    @property
+    def block_ids(self) -> List[int]:
+        return sorted(list(set(
+            bid for f in self.inodes.values() for bid in f.block_ids
+        )))
+
     def to_dict(self) -> Dict[str, Any]:
         total_size = sum(f.size for f in self.inodes.values())
+        all_block_ids = self.block_ids
         return {
             "name": self.name,
             "created_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.created_at)),
             "file_count": len(self.inodes),
             "total_size": total_size,
-            "files": [f.name for f in self.inodes.values()]
+            "files": [f.name for f in self.inodes.values()],
+            "block_ids": all_block_ids,
+            "file_blocks": {f.name: f.block_ids for f in self.inodes.values()}
         }
 
 
@@ -108,7 +117,14 @@ class AeroFileSystem:
             else:
                 loaded = self.journal.load(self)
                 if loaded:
-                    pass  # State restored from journal
+                    # Guarantee allocation bitmap reflects all restored active files and snapshots
+                    for f in self.files.values():
+                        for bid in f.block_ids:
+                            self.dev.allocation_bitmap[bid] = 1
+                    for s in self.snapshots.values():
+                        for bid in s.block_ids:
+                            self.dev.allocation_bitmap[bid] = 1
+                    self.dev._sync_bitmap_to_disk()
 
     def format(self) -> None:
         """Formats the virtual disk and resets all filesystem state cleanly."""
@@ -130,7 +146,7 @@ class AeroFileSystem:
         if self._journal_enabled:
             self.journal.save(self)
 
-    def write_file(self, filename: str, data: bytes) -> Tuple[FileInode, int]:
+    def write_file(self, filename: str, data: bytes, fill_holes_first: bool = False) -> Tuple[FileInode, int]:
         """
         Writes data to a file using Copy-on-Write (CoW) and Deduplication semantics.
         Never overwrites existing blocks in-place.
@@ -152,19 +168,53 @@ class AeroFileSystem:
         if not chunks:
             chunks = [b""]  # Empty file gets 1 zero-block
 
+        # Pre-calculate unique chunks that require new physical block allocations on disk
+        seen_in_batch = set()
+        unique_needed_count = 0
+        for chunk in chunks:
+            padded = chunk.ljust(self.block_size, b"\x00")
+            h = compute_chunk_hash(padded)
+            # If already exists in global CAS or seen earlier in this file, it will deduplicate
+            if (h not in self.dedup.hash_to_block or not self.dev.is_block_allocated(self.dedup.hash_to_block[h])) and h not in seen_in_batch:
+                seen_in_batch.add(h)
+                unique_needed_count += 1
+
+        # Allocate Best-Fit contiguous extent(s) for the new unique blocks
+        preallocated_pool: List[int] = []
+        if unique_needed_count > 0:
+            preallocated_pool = self.dev.allocate_best_fit(unique_needed_count, fill_holes_first=fill_holes_first)
+
         allocated_block_ids = []
         leaf_hashes = []
         dedup_count = 0
+        pool_idx = 0
 
-        # 3. Write chunks through Content-Addressable Storage (CAS)
-        for chunk in chunks:
-            padded = chunk.ljust(self.block_size, b"\x00")
-            bid, was_dedup = self.dedup.write_chunk(padded)
-            if was_dedup:
-                dedup_count += 1
-            allocated_block_ids.append(bid)
-            self.recovery_cache[bid] = padded
-            leaf_hashes.append(compute_chunk_hash(padded))
+        try:
+            # 3. Write chunks through Content-Addressable Storage (CAS) with Best-Fit
+            for chunk in chunks:
+                padded = chunk.ljust(self.block_size, b"\x00")
+                h = compute_chunk_hash(padded)
+                is_already_stored = (
+                    h in self.dedup.hash_to_block
+                    and self.dev.is_block_allocated(self.dedup.hash_to_block[h])
+                )
+
+                target_bid = None
+                if not is_already_stored and pool_idx < len(preallocated_pool):
+                    target_bid = preallocated_pool[pool_idx]
+                    pool_idx += 1
+
+                bid, was_dedup = self.dedup.write_chunk(padded, preallocated_block_id=target_bid)
+                if was_dedup:
+                    dedup_count += 1
+                allocated_block_ids.append(bid)
+                self.recovery_cache[bid] = padded
+                leaf_hashes.append(compute_chunk_hash(padded))
+        finally:
+            # Free any unused preallocated blocks (e.g. if duplicate chunks occurred within the file)
+            while pool_idx < len(preallocated_pool):
+                self.dev.free_block(preallocated_pool[pool_idx])
+                pool_idx += 1
 
         # 4. Construct Merkle tree and populate cache
         tree = MerkleTree(allocated_block_ids, self.dev)
@@ -307,12 +357,20 @@ class AeroFileSystem:
         # Restore from snapshot
         snap = self.snapshots[snapshot_name]
         for name, saved_inode in snap.inodes.items():
-            # Re-increment refcounts for restored files
             for bid in saved_inode.block_ids:
                 self.dedup.block_refcount[bid] = self.dedup.block_refcount.get(bid, 0) + 1
+                self.dev.allocation_bitmap[bid] = 1
+                try:
+                    data = self.dev.read_block(bid)
+                    chunk_hash = hashlib.sha256(data).hexdigest()
+                    self.dedup.hash_to_block[chunk_hash] = bid
+                    self.dedup.block_to_hash[bid] = chunk_hash
+                except Exception:
+                    pass
             self.files[name] = copy.deepcopy(saved_inode)
             self._merkle_cache.pop(name, None)  # Force fresh tree on next access
 
+        self.dev._sync_bitmap_to_disk()
         self.checkpoint()
         return True
 
@@ -383,24 +441,43 @@ class AeroFileSystem:
         disk_stats = self.dev.get_stats()
         dedup_stats = self.dedup.get_stats()
         
-        # Classify block states for the visual block grid
-        # Types: 0=Free, 1=System Metadata, 2=Unique Data, 3=Deduplicated (ref>1), 4=Corrupted
+        # Map: block_id -> count of live files referencing it
+        file_block_counts: Dict[int, int] = {}
+        for f in self.files.values():
+            for bid in f.block_ids:
+                file_block_counts[bid] = file_block_counts.get(bid, 0) + 1
+
+        # Map: block_id -> count of snapshots referencing it
+        snap_block_counts: Dict[int, int] = {}
+        for s in self.snapshots.values():
+            for sf in s.inodes.values():
+                for bid in sf.block_ids:
+                    snap_block_counts[bid] = snap_block_counts.get(bid, 0) + 1
+
+        # Classify block states for the visual block grid:
+        # 0=Free, 1=System Metadata, 2=Unique Data, 3=CAS Deduplicated (>=2 live files), 4=Corrupted, 5=Snapshot Protected
         block_states = []
-        # Sample first 1024 blocks for the visual display grid
         sample_limit = min(1024, self.dev.total_blocks)
         for b in range(sample_limit):
             if b in self.dev.corrupted_blocks:
-                block_states.append(4) # Corrupted / Bit-Rot
+                block_states.append(4)  # Corrupted / Bit-Rot
             elif b < 4:
-                block_states.append(1) # System Metadata / Superblock
+                block_states.append(1)  # System Metadata / Superblock
             elif not self.dev.is_block_allocated(b):
-                block_states.append(0) # Free
+                block_states.append(0)  # Free
             else:
-                ref = self.dedup.get_refcount(b)
-                if ref > 1:
-                    block_states.append(3) # Deduplicated Shared Block
+                live_refs = file_block_counts.get(b, 0)
+                snap_refs = snap_block_counts.get(b, 0)
+
+                if live_refs >= 2:
+                    # TRUE CAS deduplication: 2+ active files share this physical block
+                    block_states.append(3)  # Deduplicated Shared Block (Purple)
+                elif snap_refs >= 1:
+                    # Block is frozen / protected by a snapshot
+                    block_states.append(5)  # Snapshot-Protected Block (Amber)
                 else:
-                    block_states.append(2) # Unique Data Block
+                    # Unique block belonging to a single active file
+                    block_states.append(2)  # Unique Data Block (Green)
 
         return {
             "disk": disk_stats,

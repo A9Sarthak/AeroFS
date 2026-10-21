@@ -101,6 +101,8 @@ export default function HardDrive3D({
         dummy.scale.set(1.35, 1.35, 1.8)
       } else if (stateName === 'shared') {
         dummy.scale.set(1.15, 1.15, 1.3)
+      } else if (stateName === 'snapshot') {
+        dummy.scale.set(1.12, 1.12, 1.25)
       } else if (stateName === 'free') {
         dummy.scale.set(0.85, 0.85, 0.7)
       } else {
@@ -117,6 +119,8 @@ export default function HardDrive3D({
         color.set('#38bdf8')
       } else if (stateName === 'shared') {
         color.set('#c084fc') // Vibrant purple for deduplicated blocks
+      } else if (stateName === 'snapshot') {
+        color.set('#f59e0b') // Amber for snapshot-protected blocks
       } else if (stateName === 'free') {
         color.set(theme === 'light' ? '#cbd5e1' : '#1e293b')
       } else {

@@ -3,7 +3,7 @@
 //  Derived from actual API response shapes; no fabricated fields
 // ============================================================
 
-export type BlockState = 'free' | 'metadata' | 'unique' | 'shared' | 'corrupted' | 'unknown'
+export type BlockState = 'free' | 'metadata' | 'unique' | 'shared' | 'corrupted' | 'snapshot' | 'unknown'
 
 export interface BlockView {
   blockId: number
@@ -32,6 +32,11 @@ export interface FileView {
   integrityStatus?: 'healthy' | 'degraded' | 'unknown'
 }
 
+export interface FreeExtent {
+  start: number
+  length: number
+}
+
 export interface DiskView {
   total_blocks: number
   block_size: number
@@ -40,6 +45,11 @@ export interface DiskView {
   free_blocks: number
   utilization_percent: number
   corrupted_blocks_count: number
+  fragmentation_percent?: number
+  free_extents_count?: number
+  largest_free_extent?: number
+  free_extents?: FreeExtent[]
+  allocation_strategy?: string
 }
 
 export interface DeduplicationStats {
@@ -56,6 +66,8 @@ export interface SnapshotView {
   file_count: number
   total_size: number
   files: string[]
+  block_ids?: number[]
+  file_blocks?: Record<string, number[]>
 }
 
 export interface TelemetryResponse {
@@ -279,11 +291,43 @@ export interface BenchmarkResult {
   total_dedup_hits?: number
 }
 
+export interface BenchmarkComparisonRow {
+  metric: string
+  aerofs: string
+  ext4: string
+  ntfs: string
+  fat32: string
+  zfs: string
+  apfs: string
+  advantage: string
+}
+
+export interface ComparativeEvaluation {
+  workload: string
+  metrics: {
+    storage_consumed_aerofs_kb: number
+    storage_consumed_traditional_kb: number
+    storage_savings_percent: number
+    snapshot_latency_aerofs_ms: number
+    snapshot_latency_traditional_ms: number
+    snapshot_speedup_x: number
+  }
+  comparison_table: BenchmarkComparisonRow[]
+}
+
 export interface BenchmarkResponse {
   status: string
   workload: string
   results: BenchmarkResult[]
   note: string
+  comparative_evaluation?: ComparativeEvaluation
+}
+
+export interface CLIExecuteResponse {
+  status: string
+  command: string
+  output: string
+  timestamp: string
 }
 
 // Grid block state mapping (from API integer codes)
@@ -293,6 +337,7 @@ export const GRID_STATE_MAP: Record<number, BlockState> = {
   2: 'unique',
   3: 'shared',
   4: 'corrupted',
+  5: 'snapshot',
 }
 
 export const BLOCK_STATE_COLORS: Record<BlockState, string> = {
@@ -301,6 +346,7 @@ export const BLOCK_STATE_COLORS: Record<BlockState, string> = {
   unique:    '#10b981',
   shared:    '#8b5cf6',
   corrupted: '#ef4444',
+  snapshot:  '#f59e0b',
   unknown:   '#475569',
 }
 
@@ -310,14 +356,63 @@ export const BLOCK_STATE_COLORS_LIGHT: Record<BlockState, string> = {
   unique:    '#059669',
   shared:    '#7c3aed',
   corrupted: '#dc2626',
+  snapshot:  '#d97706',
   unknown:   '#94a3b8',
 }
 
 export const BLOCK_STATE_LABELS: Record<BlockState, string> = {
   free:      'Free',
-  metadata:  'Metadata/Reserved',
+  metadata:  'Metadata/Superblock',
   unique:    'Unique Data',
-  shared:    'Shared/Deduped',
+  shared:    'CAS Deduplicated',
   corrupted: 'Corrupted',
+  snapshot:  'Snapshot Protected',
   unknown:   'Unknown',
 }
+
+export interface HoleEvaluation {
+  hole_index: number
+  start: number
+  end: number
+  length: number
+  leftover: number
+  status: 'exact' | 'fit' | 'too_small'
+  reason?: string
+}
+
+export interface BestFitPreviewDecision {
+  hole_index: number
+  start: number
+  length: number
+  leftover: number
+  allocated_blocks: number[]
+  reason?: string
+}
+
+export interface BestFitPreviewResponse {
+  blocks_needed: number
+  fill_holes_first?: boolean
+  total_free_blocks: number
+  current_fragmentation_percent: number
+  projected_fragmentation_percent: number
+  holes: HoleEvaluation[]
+  best_fit: BestFitPreviewDecision | null
+  first_fit: BestFitPreviewDecision | null
+  worst_fit: BestFitPreviewDecision | null
+  can_fit_contiguously: boolean
+}
+
+export interface CreateLargeFileResponse {
+  status: string
+  filename: string
+  num_blocks: number
+  block_ids: number[]
+  size_bytes: number
+  deduplicated_chunks: number
+  merkle_root: string
+  pre_fragmentation_percent: number
+  post_fragmentation_percent: number
+  allocation_strategy: string
+  message: string
+}
+

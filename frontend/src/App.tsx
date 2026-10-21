@@ -222,7 +222,7 @@ export default function App() {
                     flex: 1,
                     height: '4px',
                     borderRadius: '2px',
-                    background: i === demoStepIdx ? '#38bdf8' : i < demoStepIdx ? '#10b981' : '#334155',
+                    background: i === demoStepIdx ? 'var(--accent)' : i < demoStepIdx ? '#10b981' : 'var(--border-dim)',
                     transition: 'background 0.2s'
                   }}
                 />
@@ -231,15 +231,15 @@ export default function App() {
 
             {/* Current Step Description */}
             <div style={{
-              background: 'rgba(30, 41, 59, 0.6)',
+              background: 'var(--bg-panel)',
               padding: '1.25rem',
               borderRadius: '8px',
-              border: '1px solid rgba(255, 255, 255, 0.05)'
+              border: '1px solid var(--border-dim)'
             }}>
-              <div style={{ fontSize: '1rem', fontWeight: 700, color: '#38bdf8', marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent)', marginBottom: '0.5rem' }}>
                 {currentStep.title}
               </div>
-              <p style={{ margin: 0, fontSize: '0.85rem', color: '#cbd5e1', lineHeight: 1.5 }}>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                 {currentStep.desc}
               </p>
 
@@ -265,9 +265,9 @@ export default function App() {
                   }}
                   disabled={demoStepIdx === 0}
                   style={{
-                    background: '#1e293b',
-                    color: '#94a3b8',
-                    border: '1px solid #334155',
+                    background: 'var(--bg-input)',
+                    color: 'var(--text-secondary)',
+                    border: '1px solid var(--border-dim)',
                     padding: '6px 14px',
                     borderRadius: '6px',
                     fontSize: '0.85rem',
@@ -284,9 +284,9 @@ export default function App() {
                   }}
                   disabled={demoStepIdx === DEMO_STEPS.length - 1}
                   style={{
-                    background: '#1e293b',
-                    color: '#f8fafc',
-                    border: '1px solid #334155',
+                    background: 'var(--bg-input)',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border-dim)',
                     padding: '6px 14px',
                     borderRadius: '6px',
                     fontSize: '0.85rem',

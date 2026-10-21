@@ -11,6 +11,10 @@ export default function Snapshots() {
   const setCurrentOperation = useStore((s) => s.setCurrentOperation)
   const selectedSnapshotName = useStore((s) => s.selectedSnapshotName)
   const setSelectedSnapshotName = useStore((s) => s.setSelectedSnapshotName)
+  const setSelectedBlockId = useStore((s) => s.setSelectedBlockId)
+  const setHighlightedBlockIds = useStore((s) => s.setHighlightedBlockIds)
+  const setActiveView = useStore((s) => s.setActiveView)
+  const theme = useStore((s) => s.theme)
 
   const [newSnapshotName, setNewSnapshotName] = useState('')
   const [confirmRestoreName, setConfirmRestoreName] = useState<string | null>(null)
@@ -218,25 +222,25 @@ export default function Snapshots() {
         }}>
           <div style={{
             padding: '0.75rem 1rem',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            borderBottom: '1px solid var(--border-dim)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center'
           }}>
-            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: '#f8fafc' }}>
+            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               Existing Snapshots ({snapshots.length})
             </h3>
-            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Click to inspect & compare</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Click to inspect & compare</span>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem' }}>
             {isLoading ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Loading snapshots…</div>
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Loading snapshots…</div>
             ) : snapshots.length === 0 ? (
-              <div style={{ padding: '3rem 1rem', textAlign: 'center', color: '#64748b' }}>
+              <div style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                 <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📷</div>
                 <div>No snapshots captured yet.</div>
-                <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '0.25rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
                   Create one using the form above to preserve your current filesystem state.
                 </div>
               </div>
@@ -251,18 +255,18 @@ export default function Snapshots() {
                       style={{
                         padding: '0.85rem',
                         borderRadius: '6px',
-                        background: isSelected ? 'rgba(56, 189, 248, 0.12)' : 'rgba(30, 41, 59, 0.5)',
-                        border: isSelected ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.05)',
+                        background: isSelected ? 'rgba(56, 189, 248, 0.12)' : (theme === 'light' ? 'rgba(241, 245, 249, 0.9)' : 'rgba(30, 41, 59, 0.5)'),
+                        border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border-dim)',
                         cursor: 'pointer',
                         transition: 'all 0.15s ease'
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
-                          <div style={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.9rem' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
                             📷 {snap.name}
                           </div>
-                          <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 }}>
                             {snap.created_at || 'Recorded in journal'}
                           </div>
                         </div>
@@ -307,7 +311,7 @@ export default function Snapshots() {
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', gap: '1rem', marginTop: '0.6rem', fontSize: '0.75rem', color: '#cbd5e1' }}>
+                      <div style={{ display: 'flex', gap: '1rem', marginTop: '0.6rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                         <span>📁 <strong>{snap.file_count ?? snap.files?.length ?? 0}</strong> files</span>
                         <span>💾 <strong>{snap.total_size ? (snap.total_size / 1024).toFixed(1) : '0'}</strong> KiB</span>
                       </div>
@@ -330,22 +334,22 @@ export default function Snapshots() {
         }}>
           <div style={{
             padding: '0.75rem 1rem',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            borderBottom: '1px solid var(--border-dim)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center'
           }}>
-            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: '#f8fafc' }}>
+            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               {selectedSnapshot ? `Snapshot Details: ${selectedSnapshot.name}` : 'Snapshot Details'}
             </h3>
             {selectedSnapshot && (
-              <span style={{ fontSize: '0.75rem', color: '#38bdf8' }}>Point-in-time diff</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--accent)' }}>Point-in-time diff</span>
             )}
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
             {!selectedSnapshot ? (
-              <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#64748b' }}>
+              <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
                 Select a snapshot on the left to view details and compare against current live state.
               </div>
             ) : (
@@ -353,19 +357,19 @@ export default function Snapshots() {
                 {/* Snapshot metadata card */}
                 <div style={{
                   padding: '0.85rem',
-                  background: 'rgba(30, 41, 59, 0.6)',
+                  background: theme === 'light' ? 'rgba(241, 245, 249, 0.85)' : 'rgba(30, 41, 59, 0.6)',
                   borderRadius: '6px',
-                  border: '1px solid rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border-dim)',
                   fontSize: '0.85rem'
                 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.4rem' }}>
-                    <span style={{ color: '#94a3b8' }}>Created:</span>
-                    <span style={{ color: '#f8fafc' }}>{selectedSnapshot.created_at || 'Just now'}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Created:</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{selectedSnapshot.created_at || 'Just now'}</span>
 
-                    <span style={{ color: '#94a3b8' }}>Preserved Files:</span>
-                    <span style={{ color: '#38bdf8', fontWeight: 600 }}>{selectedSnapshot.files?.length ?? 0}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Preserved Files:</span>
+                    <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{selectedSnapshot.files?.length ?? 0}</span>
 
-                    <span style={{ color: '#94a3b8' }}>Extent Store:</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Extent Store:</span>
                     <span style={{ color: '#10b981' }}>Independent clean extents stored</span>
                   </div>
                 </div>
@@ -373,7 +377,7 @@ export default function Snapshots() {
                 {/* Diff Comparison against Current Live Disk */}
                 {comparison && (
                   <div>
-                    <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600, color: '#cbd5e1' }}>
+                    <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                       Comparison with Current Live Filesystem:
                     </h4>
 
@@ -388,7 +392,7 @@ export default function Snapshots() {
                         <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#10b981' }}>
                           ✓ Unchanged / Shared ({comparison.unchanged.length})
                         </div>
-                        <div style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: 4 }}>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 4 }}>
                           {comparison.unchanged.length > 0
                             ? comparison.unchanged.join(', ')
                             : 'No identical files'}
@@ -403,10 +407,10 @@ export default function Snapshots() {
                           border: '1px solid rgba(56, 189, 248, 0.2)',
                           borderRadius: '6px'
                         }}>
-                          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#38bdf8' }}>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent)' }}>
                             ＋ Created since snapshot ({comparison.addedInCurrent.length})
                           </div>
-                          <div style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: 4 }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 4 }}>
                             {comparison.addedInCurrent.join(', ')}
                           </div>
                         </div>
@@ -423,7 +427,7 @@ export default function Snapshots() {
                           <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#ef4444' }}>
                             ⚠ Deleted since snapshot ({comparison.removedInCurrent.length})
                           </div>
-                          <div style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: 4 }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 4 }}>
                             {comparison.removedInCurrent.join(', ')}
                           </div>
                         </div>
@@ -434,14 +438,14 @@ export default function Snapshots() {
 
                 {/* List of files in snapshot */}
                 <div>
-                  <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600, color: '#cbd5e1' }}>
+                  <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                     Files preserved in this snapshot:
                   </h4>
                   <div style={{
-                    background: '#0a0f1d',
+                    background: 'var(--bg-input)',
                     padding: '0.5rem',
                     borderRadius: '6px',
-                    border: '1px solid rgba(255, 255, 255, 0.05)',
+                    border: '1px solid var(--border-dim)',
                     display: 'flex',
                     flexWrap: 'wrap',
                     gap: '0.4rem'
@@ -451,20 +455,139 @@ export default function Snapshots() {
                         <span
                           key={file}
                           style={{
-                            background: '#1e293b',
-                            color: '#e2e8f0',
+                            background: 'var(--bg-card)',
+                            color: 'var(--text-primary)',
                             padding: '3px 8px',
                             borderRadius: '4px',
                             fontSize: '0.75rem',
-                            border: '1px solid rgba(255, 255, 255, 0.06)'
+                            border: '1px solid var(--border-dim)'
                           }}
                         >
                           📄 {file}
                         </span>
                       ))
                     ) : (
-                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Empty snapshot</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Empty snapshot</span>
                     )}
+                  </div>
+                </div>
+
+                {/* ── WHERE ON THE DISK IS THIS SNAPSHOT SAVED? ── */}
+                <div style={{
+                  padding: '0.85rem',
+                  background: theme === 'light' ? 'rgba(254, 243, 199, 0.3)' : 'rgba(15, 23, 42, 0.85)',
+                  border: theme === 'light' ? '1px solid rgba(217, 119, 6, 0.35)' : '1px solid rgba(245, 158, 11, 0.35)',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 20px rgba(245, 158, 11, 0.08)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: theme === 'light' ? '#b45309' : '#fbbf24', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span>💽</span> Physical Disk Location & Storage Layout
+                    </h4>
+                    <button
+                      onClick={() => {
+                        if (selectedSnapshot.block_ids && selectedSnapshot.block_ids.length > 0) {
+                          setHighlightedBlockIds(new Set(selectedSnapshot.block_ids))
+                          setSelectedBlockId(selectedSnapshot.block_ids[0])
+                          setActiveView('storage')
+                          showToast('success', `Highlighted ${selectedSnapshot.block_ids.length} snapshot blocks on 3D Hard Drive`)
+                        }
+                      }}
+                      disabled={!selectedSnapshot.block_ids || selectedSnapshot.block_ids.length === 0}
+                      style={{
+                        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                        color: '#0f172a',
+                        border: 'none',
+                        padding: '4px 10px',
+                        borderRadius: '5px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        cursor: selectedSnapshot.block_ids?.length ? 'pointer' : 'not-allowed',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        opacity: selectedSnapshot.block_ids?.length ? 1 : 0.5,
+                      }}
+                    >
+                      <span>🧊</span> View on 3D Platter →
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', fontSize: '0.75rem', marginBottom: '0.75rem' }}>
+                    {/* Physical Blocks Location */}
+                    <div style={{ background: theme === 'light' ? 'rgba(241, 245, 249, 0.9)' : 'rgba(30, 41, 59, 0.5)', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-dim)' }}>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase' }}>Physical Disk Container</div>
+                      <div style={{ color: 'var(--text-primary)', fontWeight: 600, fontFamily: 'monospace', marginTop: 2 }}>
+                        aerofs_production_disk.bin
+                      </div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', marginTop: 2 }}>
+                        Block Size: 4,096 Bytes · Binary Sector Image
+                      </div>
+                    </div>
+
+                    {/* Metadata & Inode Journal Location */}
+                    <div style={{ background: theme === 'light' ? 'rgba(241, 245, 249, 0.9)' : 'rgba(30, 41, 59, 0.5)', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-dim)' }}>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase' }}>Metadata & Journal Location</div>
+                      <div style={{ color: 'var(--accent)', fontWeight: 600, fontFamily: 'monospace', marginTop: 2 }}>
+                        Blocks 0–3 + .journal.json
+                      </div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', marginTop: 2 }}>
+                        Block 0: Superblock · Blocks 1-3: Bitmap
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Exact Physical Block IDs on Disk */}
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '0.35rem' }}>
+                      Physical Sectors Frozen on Platter:
+                      <span style={{ color: theme === 'light' ? '#b45309' : '#f59e0b', marginLeft: 6, fontWeight: 700 }}>
+                        {selectedSnapshot.block_ids?.length ?? 0} sectors allocated
+                      </span>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '4px',
+                      maxHeight: '110px',
+                      overflowY: 'auto',
+                      background: 'var(--bg-input)',
+                      padding: '0.5rem',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-dim)',
+                    }}>
+                      {selectedSnapshot.block_ids && selectedSnapshot.block_ids.length > 0 ? (
+                        selectedSnapshot.block_ids.map((bid) => (
+                          <span
+                            key={bid}
+                            onClick={() => {
+                              setSelectedBlockId(bid)
+                              showToast('success', `Physical Block #${bid} (Byte Offset: ${(bid * 4096).toLocaleString()} B)`)
+                            }}
+                            title={`Click to inspect Physical Block #${bid} · Byte offset ${(bid * 4096).toLocaleString()} · Sector #${bid}`}
+                            style={{
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                              background: 'rgba(245, 158, 11, 0.15)',
+                              border: '1px solid rgba(245, 158, 11, 0.4)',
+                              color: theme === 'light' ? '#b45309' : '#fbbf24',
+                              fontFamily: 'monospace',
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            #{bid} ({(bid * 4).toFixed(0)} KB)
+                          </span>
+                        ))
+                      ) : (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>No physical blocks allocated</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: '0.45rem', lineHeight: 1.4 }}>
+                      💡 <strong>Copy-on-Write (CoW) Principle:</strong> The snapshot does not duplicate block data. It holds immutable pointers to these physical sectors on disk. When live files are edited, new blocks are allocated, leaving these original sectors permanently protected.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -569,8 +692,8 @@ export default function Snapshots() {
                 onClick={() => setConfirmDeleteName(null)}
                 style={{
                   background: 'transparent',
-                  color: '#94a3b8',
-                  border: '1px solid #334155',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-dim)',
                   padding: '6px 12px',
                   borderRadius: '6px',
                   cursor: 'pointer'
