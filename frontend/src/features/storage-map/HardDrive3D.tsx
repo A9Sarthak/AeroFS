@@ -46,6 +46,7 @@ interface HardDrive3DProps {
   selectedBlockId: number | null
   hoveredBlockId: number | null
   highlightedBlockIds?: Set<number>
+  filter?: string
   theme: 'dark' | 'light'
   onSelectBlock: (id: number) => void
   onHoverBlock: (id: number | null) => void
@@ -57,6 +58,7 @@ export default function HardDrive3D({
   selectedBlockId,
   hoveredBlockId,
   highlightedBlockIds = new Set(),
+  filter = 'all',
   theme,
   onSelectBlock,
   onHoverBlock,
@@ -78,6 +80,8 @@ export default function HardDrive3D({
     if (!meshRef.current) return
     const palette = theme === 'light' ? BLOCK_STATE_COLORS_LIGHT : BLOCK_STATE_COLORS
 
+    const isFilterActive = filter && filter !== 'all'
+
     for (let i = 0; i < total; i++) {
       const stateCode = gridBlocks[i] ?? 0
       const stateName: BlockState = GRID_STATE_MAP[stateCode] ?? 'free'
@@ -85,6 +89,15 @@ export default function HardDrive3D({
       const isSelected = selectedBlockId === i
       const isHovered = hoveredBlockId === i
       const isHighlighted = highlightedBlockIds.has(i)
+
+      const matchesFilter =
+        !isFilterActive ||
+        (filter === 'free' && stateName === 'free') ||
+        (filter === 'metadata' && stateName === 'metadata') ||
+        (filter === 'unique' && stateName === 'unique') ||
+        (filter === 'shared' && stateName === 'shared') ||
+        (filter === 'corrupted' && stateName === 'corrupted') ||
+        (filter === 'snapshot' && stateName === 'snapshot')
 
       const col = i % GRID_COLS
       const row = Math.floor(i / GRID_COLS)
@@ -95,12 +108,19 @@ export default function HardDrive3D({
 
       dummy.position.set(lx, ly, lz)
 
+      // Scale assignment
       if (isSelected) {
-        dummy.scale.set(1.6, 1.6, 2.5)
+        dummy.scale.set(1.7, 1.7, 2.6)
       } else if (isHovered || isHighlighted) {
-        dummy.scale.set(1.35, 1.35, 1.8)
+        dummy.scale.set(1.45, 1.45, 2.0)
+      } else if (isFilterActive && matchesFilter) {
+        // Highlighted matching filtered blocks pop out prominently!
+        dummy.scale.set(1.5, 1.5, 2.2)
+      } else if (isFilterActive && !matchesFilter) {
+        // Non-matching blocks shrink down into disk face
+        dummy.scale.set(0.45, 0.45, 0.25)
       } else if (stateName === 'shared') {
-        dummy.scale.set(1.15, 1.15, 1.3)
+        dummy.scale.set(1.2, 1.2, 1.35)
       } else if (stateName === 'snapshot') {
         dummy.scale.set(1.12, 1.12, 1.25)
       } else if (stateName === 'free') {
@@ -117,6 +137,18 @@ export default function HardDrive3D({
         color.set('#ffffff')
       } else if (isHovered || isHighlighted) {
         color.set('#38bdf8')
+      } else if (isFilterActive && !matchesFilter) {
+        // Dimmed out non-matching blocks
+        color.set(theme === 'light' ? '#e2e8f0' : '#0c1322')
+      } else if (isFilterActive && matchesFilter) {
+        // Matching filtered blocks glow vibrantly!
+        if (stateName === 'shared') color.set('#d946ef') // Neon violet/magenta
+        else if (stateName === 'unique') color.set('#10b981') // Bright green
+        else if (stateName === 'metadata') color.set('#38bdf8') // Sky blue
+        else if (stateName === 'corrupted') color.set('#ef4444') // Bright red
+        else if (stateName === 'snapshot') color.set('#f59e0b') // Amber
+        else if (stateName === 'free') color.set('#94a3b8')
+        else color.set('#ffffff')
       } else if (stateName === 'shared') {
         color.set('#c084fc') // Vibrant purple for deduplicated blocks
       } else if (stateName === 'snapshot') {
@@ -134,7 +166,7 @@ export default function HardDrive3D({
     if (meshRef.current.instanceColor) {
       meshRef.current.instanceColor.needsUpdate = true
     }
-  }, [gridBlocks, selectedBlockId, hoveredBlockId, highlightedBlockIds, total, dummy, color, theme])
+  }, [gridBlocks, selectedBlockId, hoveredBlockId, highlightedBlockIds, filter, total, dummy, color, theme])
 
   // LED blink animation
   useFrame(({ clock }) => {

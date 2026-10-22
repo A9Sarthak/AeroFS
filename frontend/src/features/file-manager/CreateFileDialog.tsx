@@ -271,6 +271,68 @@ export default function CreateFileDialog({ onClose, onSuccess }: Props) {
               </button>
             ))}
           </div>
+
+          {/* 75% Partial Block Deduplication Quick Pair Buttons */}
+          <div style={{
+            marginTop: 8,
+            padding: '8px 10px',
+            background: theme === 'light' ? 'rgba(124, 58, 237, 0.06)' : 'rgba(168, 85, 247, 0.08)',
+            border: theme === 'light' ? '1px solid rgba(124, 58, 237, 0.25)' : '1px solid rgba(168, 85, 247, 0.3)',
+            borderRadius: 6,
+          }}>
+            <div style={{ fontSize: '0.74rem', color: theme === 'light' ? '#6b21a8' : '#c084fc', fontWeight: 700, marginBottom: 6 }}>
+              🎨 75% Block Dedup Demo Pair (4KB Chunk-Aligned):
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{
+                  background: 'rgba(168, 85, 247, 0.18)',
+                  border: '1px solid #a855f7',
+                  color: theme === 'light' ? '#581c87' : '#f3e8ff',
+                  fontWeight: 700,
+                  fontSize: '0.73rem',
+                  padding: '3px 9px',
+                }}
+                onClick={() => {
+                  setFilename('file_a.bin')
+                  const p1 = ('[CHUNK_1_IDENTICAL]\n' + 'A'.repeat(80) + '\n').repeat(48).slice(0, 4096).padEnd(4096, '0')
+                  const p2 = ('[CHUNK_2_IDENTICAL]\n' + 'B'.repeat(80) + '\n').repeat(48).slice(0, 4096).padEnd(4096, '0')
+                  const p3 = ('[CHUNK_3_IDENTICAL]\n' + 'C'.repeat(80) + '\n').repeat(48).slice(0, 4096).padEnd(4096, '0')
+                  const p4_old = ('[CHUNK_4_OLD_ORIGINAL]\n' + 'D'.repeat(80) + '\n').repeat(48).slice(0, 4096).padEnd(4096, '0')
+                  setContent(p1 + p2 + p3 + p4_old)
+                }}
+              >
+                1. File A (16 KB · Parts 1, 2, 3 + Part 4 Old)
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{
+                  background: 'rgba(16, 185, 129, 0.18)',
+                  border: '1px solid #10b981',
+                  color: theme === 'light' ? '#065f46' : '#6ee7b7',
+                  fontWeight: 700,
+                  fontSize: '0.73rem',
+                  padding: '3px 9px',
+                }}
+                onClick={() => {
+                  setFilename('file_b.bin')
+                  const p1 = ('[CHUNK_1_IDENTICAL]\n' + 'A'.repeat(80) + '\n').repeat(48).slice(0, 4096).padEnd(4096, '0')
+                  const p2 = ('[CHUNK_2_IDENTICAL]\n' + 'B'.repeat(80) + '\n').repeat(48).slice(0, 4096).padEnd(4096, '0')
+                  const p3 = ('[CHUNK_3_IDENTICAL]\n' + 'C'.repeat(80) + '\n').repeat(48).slice(0, 4096).padEnd(4096, '0')
+                  const p4_new = ('[CHUNK_4_NEW_UNIQUE_25%]\n' + 'E'.repeat(80) + '\n').repeat(48).slice(0, 4096).padEnd(4096, '0')
+                  setContent(p1 + p2 + p3 + p4_new)
+                }}
+              >
+                2. File B (16 KB · 75% Same · 1 New Block)
+              </button>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: theme === 'light' ? '#475569' : '#94a3b8', lineHeight: 1.35 }}>
+              💡 <strong>4KB Block Rule:</strong> AeroFS hashes each 4KB chunk with SHA-256. When File B is created, it reuses the 3 identical physical blocks (refcount=2) and only allocates 1 new block for the 25% unique data!
+            </div>
+          </div>
         </div>
 
         <div className="form-group">
@@ -288,6 +350,21 @@ export default function CreateFileDialog({ onClose, onSuccess }: Props) {
             value={content}
             onChange={(e) => setContent(e.target.value)}
           />
+
+          {byteLen > 0 && byteLen < 4096 && (
+            <div style={{
+              marginTop: 6,
+              padding: '7px 10px',
+              background: theme === 'light' ? 'rgba(217, 119, 6, 0.08)' : 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              borderRadius: 6,
+              fontSize: '0.73rem',
+              color: theme === 'light' ? '#b45309' : '#fbbf24',
+              lineHeight: 1.4,
+            }}>
+              💡 <strong>Why short text files cannot share 75% of blocks:</strong> Your input is only <strong>{byteLen} bytes</strong> (&lt; 4,096 bytes). In operating systems, disks allocate space in minimum <strong>4,096-byte (4KB) blocks</strong>. A file with 4 bytes only has <strong>1 block</strong>. To demonstrate 75% partial block deduplication, a file must have <strong>at least 4 blocks (16 KB)</strong> where 3 blocks (12 KB) are identical! Use the <em>"File A &amp; File B"</em> buttons above to generate 16 KB aligned payloads.
+            </div>
+          )}
         </div>
 
         {/* ── Allocation Strategy Option & Contiguous Explanation ── */}

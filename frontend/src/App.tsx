@@ -7,7 +7,8 @@ import {
   createSnapshot,
   injectBitRot,
   runScrub,
-  runHeal
+  runHeal,
+  simulatePartialDedup75,
 } from './api/client'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -21,11 +22,19 @@ const DEMO_STEPS = [
     }
   },
   {
-    title: '2. CAS Deduplication',
+    title: '2. CAS Deduplication (100% Clone)',
     desc: 'Creates an exact duplicate file "demo_dup.txt". AeroFS Content-Addressable Storage reuses the physical block without allocating new disk space.',
     actionName: 'Duplicate File',
     run: async () => {
       await duplicateFile('demo_base.txt', 'demo_dup.txt')
+    }
+  },
+  {
+    title: '2b. 75% Partial Block Deduplication',
+    desc: 'Proves block-level dedup: File A and File B are 75% identical (16 KB = 4 blocks). AeroFS shares the 3 identical blocks (refcount=2) and only allocates 1 new block for the 25% unique data!',
+    actionName: 'Deploy 75% Dedup (File A & B)',
+    run: async () => {
+      await simulatePartialDedup75()
     }
   },
   {

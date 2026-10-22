@@ -2,6 +2,7 @@ import React, { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { FileView } from '../../api/types'
+import { GRID_STATE_MAP } from '../../api/types'
 import { getHardDriveBlockCoords, HARD_DRIVE_POS } from './HardDrive3D'
 import { getFileBlockCoords } from './LogicalFiles3D'
 
@@ -55,6 +56,7 @@ interface HardDriveLinksProps {
   selectedBlockId: number | null
   hoveredBlockId: number | null
   linkMode: 'shared' | 'all' | 'selected' | 'off'
+  filter?: string
 }
 
 export default function HardDriveLinks({
@@ -63,6 +65,7 @@ export default function HardDriveLinks({
   selectedBlockId,
   hoveredBlockId,
   linkMode,
+  filter = 'all',
 }: HardDriveLinksProps) {
   if (linkMode === 'off') return null
 
@@ -94,13 +97,28 @@ export default function HardDriveLinks({
       fileName: string
     }[] = []
 
+    const isFilterActive = filter && filter !== 'all'
+
     for (const [blockId, refs] of blockFileMap) {
       const isShared = refs.length >= 2 || gridBlocks[blockId] === 3
       const isSelected = activeBlockId === blockId
+      const stateCode = gridBlocks[blockId] ?? 0
+      const stateName = GRID_STATE_MAP[stateCode] ?? 'free'
 
-      // Filter by linkMode
+      const matchesFilter =
+        !isFilterActive ||
+        (filter === 'shared' && (isShared || stateName === 'shared')) ||
+        (filter === 'unique' && (!isShared && (stateName === 'unique' || refs.length === 1))) ||
+        (filter === 'metadata' && stateName === 'metadata') ||
+        (filter === 'corrupted' && stateName === 'corrupted') ||
+        (filter === 'free' && stateName === 'free')
+
+      // If a block filter is active and this block doesn't match and isn't actively selected, skip
+      if (isFilterActive && !matchesFilter && !isSelected) continue
+
+      // Filter by linkMode when no specific filter is active
       if (linkMode === 'selected' && !isSelected) continue
-      if (linkMode === 'shared' && !isShared && !isSelected) continue
+      if (!isFilterActive && linkMode === 'shared' && !isShared && !isSelected) continue
 
       // Exact world coordinates of the physical block on the Hard Drive
       const hardDriveTarget = getHardDriveBlockCoords(blockId, HARD_DRIVE_POS)
@@ -115,8 +133,13 @@ export default function HardDriveLinks({
         )
 
         let beamColor = isShared ? '#a855f7' : '#0284c7'
-        if (isSelected) beamColor = '#38bdf8'
-        else if (isShared) beamColor = '#c084fc'
+        if (isSelected) {
+          beamColor = '#38bdf8'
+        } else if (isFilterActive && matchesFilter) {
+          beamColor = isShared ? '#d946ef' : '#10b981'
+        } else if (isShared) {
+          beamColor = '#c084fc'
+        }
 
         result.push({
           key: `${ref.fileName}-b${blockId}-${ref.blockIndex}`,
@@ -131,7 +154,7 @@ export default function HardDriveLinks({
     }
 
     return result
-  }, [blockFileMap, files, gridBlocks, activeBlockId, linkMode])
+  }, [blockFileMap, files, gridBlocks, activeBlockId, linkMode, filter])
 
   return (
     <group>

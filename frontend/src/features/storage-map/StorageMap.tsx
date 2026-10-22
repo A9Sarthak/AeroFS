@@ -2,8 +2,8 @@ import React, { useRef, useMemo, useState, useEffect, Suspense } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
-import { useQuery } from '@tanstack/react-query'
-import { getTelemetry } from '../../api/client'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getTelemetry, simulatePartialDedup75 } from '../../api/client'
 import { useStore } from '../../state/store'
 import {
   GRID_STATE_MAP,
@@ -503,10 +503,13 @@ function HardDriveHUD({
           <div style={{ fontSize: '0.69rem', color: theme === 'light' ? '#1e293b' : '#cbd5e1' }}>
             {isShared ? (
               <span>
-                Both duplicate files point to this single block on the drive:{' '}
+                Shared 4KB Physical Block via CAS:{' '}
                 <strong style={{ color: theme === 'light' ? '#581c87' : '#f3e8ff' }}>{owners.join(' & ')}</strong>
                 <div style={{ color: theme === 'light' ? '#6b21a8' : '#a855f7', marginTop: 2, fontWeight: 600 }}>
-                  ✓ 1 Physical Block Shared via CAS ({owners.length} file references)
+                  ✓ Block-Level CAS ({owners.length} files converge here · Refcount: 2)
+                </div>
+                <div style={{ color: theme === 'light' ? '#0369a1' : '#38bdf8', marginTop: 2, fontSize: '0.67rem', lineHeight: 1.3 }}>
+                  💡 NO new location allocated! Only unique blocks (e.g. 25% diff) receive new physical disk sectors.
                 </div>
               </span>
             ) : isSnapshot ? (
@@ -561,6 +564,405 @@ function HardDriveHUD({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  PartialDedupModal: Interactive 75% Partial Block Deduplication Showcase
+// ─────────────────────────────────────────────────────────────────────────────
+interface PartialDedupModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onDeployed: (sharedBlocks: number[]) => void
+  theme: 'dark' | 'light'
+}
+
+function PartialDedupModal({ isOpen, onClose, onDeployed, theme }: PartialDedupModalProps) {
+  const [deploying, setDeploying] = useState(false)
+  const showToast = useStore((s) => s.showToast)
+  const addEvent = useStore((s) => s.addEvent)
+  const queryClient = useQueryClient()
+
+  if (!isOpen) return null
+
+  const handleDeploy = async () => {
+    setDeploying(true)
+    try {
+      const res = await simulatePartialDedup75()
+      queryClient.invalidateQueries({ queryKey: ['telemetry'] })
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+      showToast('success', 'Created file_a.bin & file_b.bin! 3 blocks (75%) shared via CAS, 1 unique block each.')
+      addEvent({
+        operation: '75% Block Dedup Demo',
+        status: 'success',
+        message: `Created file_a.bin & file_b.bin. 3 shared blocks: [${res.shared_blocks.join(', ')}], unique: file_a=[${res.file_a_unique.join(', ')}], file_b=[${res.file_b_unique.join(', ')}]`,
+        affectedBlockIds: [...res.shared_blocks, ...res.file_a_unique, ...res.file_b_unique],
+      })
+      onDeployed(res.shared_blocks)
+      onClose()
+    } catch (e: any) {
+      showToast('error', e.message)
+    } finally {
+      setDeploying(false)
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0, 0, 0, 0.82)',
+        backdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 200,
+        padding: '1rem',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: theme === 'light' ? '#ffffff' : '#0b1120',
+          border: theme === 'light' ? '1px solid #cbd5e1' : '1px solid rgba(168, 85, 247, 0.4)',
+          borderRadius: 14,
+          maxWidth: 820,
+          width: '100%',
+          maxHeight: '92vh',
+          overflowY: 'auto',
+          boxShadow: '0 24px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(168, 85, 247, 0.25)',
+          padding: '1.75rem',
+          color: theme === 'light' ? '#0f172a' : '#f8fafc',
+          position: 'relative',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.2rem' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '1.4rem' }}>🎨</span>
+              <h2 style={{ margin: 0, fontSize: '1.22rem', fontWeight: 800, color: theme === 'light' ? '#6b21a8' : '#c084fc' }}>
+                How AeroFS Handles Files with 75% Identical Data
+              </h2>
+            </div>
+            <div style={{ fontSize: '0.82rem', color: theme === 'light' ? '#475569' : '#94a3b8', marginTop: 4 }}>
+              Block-Level CAS Deduplication vs. Whole-File Duplication
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              fontSize: '1.2rem',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              padding: '4px 8px',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Core Question & Direct Answer Alert */}
+        <div
+          style={{
+            background: theme === 'light' ? 'rgba(124, 58, 237, 0.08)' : 'rgba(168, 85, 247, 0.12)',
+            border: theme === 'light' ? '1px solid rgba(124, 58, 237, 0.35)' : '1px solid rgba(168, 85, 247, 0.4)',
+            borderRadius: 10,
+            padding: '1rem 1.2rem',
+            marginBottom: '1.25rem',
+          }}
+        >
+          <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#ef4444', marginBottom: 5 }}>
+            ❌ Common Misconception: Does it allocate a completely new location for the whole file?
+          </div>
+          <div style={{ fontSize: '0.98rem', fontWeight: 800, color: theme === 'light' ? '#6b21a8' : '#e9d5ff', marginBottom: 4 }}>
+            👉 NO! It does NOT create a completely new location for the whole file.
+          </div>
+          <div style={{ fontSize: '0.84rem', lineHeight: 1.5, color: theme === 'light' ? '#334155' : '#cbd5e1' }}>
+            Because AeroFS works at the <strong>4KB block level</strong>, it <strong>shares the 75% identical blocks</strong> and <strong>only allocates new physical locations for the 25% that is different</strong>.
+          </div>
+        </div>
+
+        {/* Visual Diagram Box */}
+        <div
+          style={{
+            background: theme === 'light' ? '#f8fafc' : '#070b14',
+            border: theme === 'light' ? '1px solid #e2e8f0' : '1px solid #1e293b',
+            borderRadius: 10,
+            padding: '1.2rem',
+            marginBottom: '1.25rem',
+          }}
+        >
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#38bdf8', marginBottom: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            🎨 16 KB Example (4 Blocks of 4KB Each)
+          </div>
+
+          {/* Interactive ASCII / Block Map Diagram */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', alignItems: 'center' }}>
+            {/* File A Row */}
+            <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ width: 85, fontSize: '0.78rem', fontWeight: 700, color: '#38bdf8' }}>File A:</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, flex: 1 }}>
+                {['Part 1 (4KB)', 'Part 2 (4KB)', 'Part 3 (4KB)'].map((p, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: '8px 4px',
+                      borderRadius: 6,
+                      background: 'rgba(168, 85, 247, 0.2)',
+                      border: '1px solid #a855f7',
+                      textAlign: 'center',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      color: '#d8b4fe',
+                    }}
+                  >
+                    <div>{p}</div>
+                    <div style={{ fontSize: '0.65rem', color: '#c084fc' }}>Identical</div>
+                  </div>
+                ))}
+                <div
+                  style={{
+                    padding: '8px 4px',
+                    borderRadius: 6,
+                    background: 'rgba(2, 132, 199, 0.2)',
+                    border: '1px solid #0284c7',
+                    textAlign: 'center',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    color: '#7dd3fc',
+                  }}
+                >
+                  <div>Part 4 (Old)</div>
+                  <div style={{ fontSize: '0.65rem', color: '#38bdf8' }}>Original 25%</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Connecting Arrows Down */}
+            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', paddingLeft: 93, paddingRight: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                <span>│</span>
+                <span>│</span>
+                <span>│</span>
+                <span>│</span>
+              </div>
+            </div>
+
+            {/* Physical Disk Blocks Row */}
+            <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ width: 85, fontSize: '0.78rem', fontWeight: 700, color: '#e2e8f0' }}>Physical Disk:</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, flex: 1 }}>
+                {['#10', '#11', '#12'].map((bid, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: '8px 4px',
+                      borderRadius: 6,
+                      background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.3) 0%, rgba(124, 58, 237, 0.4) 100%)',
+                      border: '2px solid #a855f7',
+                      textAlign: 'center',
+                      fontSize: '0.76rem',
+                      fontWeight: 800,
+                      color: '#ffffff',
+                      boxShadow: '0 0 12px rgba(168, 85, 247, 0.4)',
+                    }}
+                  >
+                    <div>Block {bid}</div>
+                    <div style={{ fontSize: '0.65rem', color: '#f3e8ff' }}>🔗 SHARED (Ref=2)</div>
+                  </div>
+                ))}
+                <div
+                  style={{
+                    padding: '8px 4px',
+                    borderRadius: 6,
+                    background: 'rgba(2, 132, 199, 0.25)',
+                    border: '1px solid #0284c7',
+                    textAlign: 'center',
+                    fontSize: '0.76rem',
+                    fontWeight: 800,
+                    color: '#38bdf8',
+                  }}
+                >
+                  <div>Block #13</div>
+                  <div style={{ fontSize: '0.65rem', color: '#93c5fd' }}>Unique to File A</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Connecting Arrows Up */}
+            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', paddingLeft: 93, paddingRight: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                <span style={{ color: '#a855f7', fontWeight: 'bold' }}>▲</span>
+                <span style={{ color: '#a855f7', fontWeight: 'bold' }}>▲</span>
+                <span style={{ color: '#a855f7', fontWeight: 'bold' }}>▲</span>
+                <span style={{ color: '#64748b' }}>✕ (No link)</span>
+              </div>
+            </div>
+
+            {/* File B Row */}
+            <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ width: 85, fontSize: '0.78rem', fontWeight: 700, color: '#38bdf8' }}>File B:</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, flex: 1 }}>
+                {['Part 1 (4KB)', 'Part 2 (4KB)', 'Part 3 (4KB)'].map((p, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: '8px 4px',
+                      borderRadius: 6,
+                      background: 'rgba(168, 85, 247, 0.2)',
+                      border: '1px solid #a855f7',
+                      textAlign: 'center',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      color: '#d8b4fe',
+                    }}
+                  >
+                    <div>{p}</div>
+                    <div style={{ fontSize: '0.65rem', color: '#c084fc' }}>Identical (Reused)</div>
+                  </div>
+                ))}
+                <div
+                  style={{
+                    padding: '8px 4px',
+                    borderRadius: 6,
+                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.3) 100%)',
+                    border: '1px solid #10b981',
+                    textAlign: 'center',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    color: '#6ee7b7',
+                  }}
+                >
+                  <div>Part 4 (New)</div>
+                  <div style={{ fontSize: '0.65rem', color: '#34d399' }}>➔ Block #99 (New!)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Under the Hood Steps */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+          <div
+            style={{
+              padding: '0.9rem',
+              borderRadius: 8,
+              background: theme === 'light' ? 'rgba(124, 58, 237, 0.05)' : 'rgba(168, 85, 247, 0.08)',
+              border: theme === 'light' ? '1px solid rgba(124, 58, 237, 0.2)' : '1px solid rgba(168, 85, 247, 0.25)',
+              fontSize: '0.8rem',
+              lineHeight: 1.5,
+            }}
+          >
+            <div style={{ fontWeight: 800, color: theme === 'light' ? '#6b21a8' : '#c084fc', marginBottom: 4 }}>
+              1. The 75% Identical Blocks (Parts 1, 2, 3)
+            </div>
+            <ul style={{ margin: 0, paddingLeft: '1.2rem', color: theme === 'light' ? '#334155' : '#cbd5e1' }}>
+              <li>AeroFS hashes each 4KB chunk with SHA-256 in CAS.</li>
+              <li>Hashes match existing Blocks #10, #11, and #12.</li>
+              <li><strong>Zero new disk space allocated!</strong> Increments reference counter (<code style={{ color: '#a855f7' }}>refcount = 2</code>).</li>
+            </ul>
+          </div>
+
+          <div
+            style={{
+              padding: '0.9rem',
+              borderRadius: 8,
+              background: theme === 'light' ? 'rgba(2, 132, 199, 0.05)' : 'rgba(56, 189, 248, 0.08)',
+              border: theme === 'light' ? '1px solid rgba(2, 132, 199, 0.2)' : '1px solid rgba(56, 189, 248, 0.25)',
+              fontSize: '0.8rem',
+              lineHeight: 1.5,
+            }}
+          >
+            <div style={{ fontWeight: 800, color: theme === 'light' ? '#0369a1' : '#38bdf8', marginBottom: 4 }}>
+              2. The 25% Different Block (Part 4)
+            </div>
+            <ul style={{ margin: 0, paddingLeft: '1.2rem', color: theme === 'light' ? '#334155' : '#cbd5e1' }}>
+              <li>Part 4 produces a new, unique SHA-256 hash.</li>
+              <li>AeroFS allocates <strong>one single new block</strong> (Block #99) for that 25% unique data.</li>
+              <li>File A keeps Block #13; File B points to Block #99.</li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Space Saved Comparison Table */}
+        <div style={{ marginBottom: '1.25rem' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase' }}>
+            📊 Space Saved: Traditional OS vs. AeroFS (100 MB Files Example)
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+            <thead>
+              <tr style={{ background: theme === 'light' ? '#f1f5f9' : '#1e293b', textAlign: 'left' }}>
+                <th style={{ padding: '8px 10px', border: '1px solid #334155' }}>System</th>
+                <th style={{ padding: '8px 10px', border: '1px solid #334155' }}>Storage Strategy</th>
+                <th style={{ padding: '8px 10px', border: '1px solid #334155' }}>Total Disk Consumed</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{ padding: '8px 10px', border: '1px solid #334155', fontWeight: 600 }}>Traditional (Windows / NTFS)</td>
+                <td style={{ padding: '8px 10px', border: '1px solid #334155', color: '#ef4444' }}>Saves 2 completely separate 100MB files</td>
+                <td style={{ padding: '8px 10px', border: '1px solid #334155', color: '#ef4444', fontWeight: 700 }}>200 MB (100% wasted duplication)</td>
+              </tr>
+              <tr style={{ background: 'rgba(168, 85, 247, 0.1)' }}>
+                <td style={{ padding: '8px 10px', border: '1px solid #a855f7', fontWeight: 700, color: '#c084fc' }}>AeroFS (Our Subsystem)</td>
+                <td style={{ padding: '8px 10px', border: '1px solid #a855f7', color: '#a78bfa' }}>Shares 75MB blocks, only stores 25MB new blocks</td>
+                <td style={{ padding: '8px 10px', border: '1px solid #a855f7', color: '#34d399', fontWeight: 800 }}>125 MB (Saves 75 MB immediately!)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Viva Summary Line Alert Box */}
+        <div
+          style={{
+            background: 'rgba(16, 185, 129, 0.1)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            borderRadius: 8,
+            padding: '10px 14px',
+            marginBottom: '1.25rem',
+            fontSize: '0.82rem',
+            color: '#34d399',
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>🎓 Viva Summary Line:</strong> "AeroFS does block-level deduplication, not whole-file deduplication. If two files are 75% identical, they share 75% of the same physical disk sectors and only consume new sectors for the 25% unique differences."
+        </div>
+
+        {/* Action Button */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onClose}
+            style={{ fontSize: '0.82rem', padding: '8px 16px' }}
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={deploying}
+            onClick={handleDeploy}
+            style={{
+              fontSize: '0.82rem',
+              padding: '8px 18px',
+              background: 'linear-gradient(135deg, #7c3aed 0%, #0284c7 100%)',
+              border: 'none',
+              fontWeight: 700,
+              boxShadow: '0 4px 16px rgba(124, 58, 237, 0.4)',
+              cursor: deploying ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {deploying ? 'Deploying to Virtual Disk…' : '⚡ Deploy 75% Dedup Live on Disk (File A & B)'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Main StorageMap Component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function StorageMap() {
@@ -583,6 +985,7 @@ export default function StorageMap() {
   const [searchInput, setSearchInput] = useState('')
   const [cameraResetCounter, setCameraResetCounter] = useState(0)
   const [webglError, setWebglError] = useState(false)
+  const [show75Modal, setShow75Modal] = useState(false)
 
   // View modes: 'dedup' (Files -> Hard Drive), 'matrix' (3D Cube -> Hard Drive), 'drive' (Hard Drive Only)
   const [viewMode, setViewMode] = useState<'dedup' | 'matrix' | 'drive'>('dedup')
@@ -609,7 +1012,32 @@ export default function StorageMap() {
     return gridBlocks.filter((s) => s === 3).length
   }, [gridBlocks])
 
+  const stateCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: gridBlocks.length || 4096,
+      unique: 0,
+      shared: 0,
+      metadata: 0,
+      corrupted: 0,
+      free: 0,
+    }
+    for (const code of gridBlocks) {
+      const s = GRID_STATE_MAP[code] ?? 'free'
+      if (counts[s] !== undefined) counts[s]++
+    }
+    return counts
+  }, [gridBlocks])
+
   const activeBlockId = hoveredId !== null ? hoveredId : selectedBlockId
+
+  const FILTER_ACTIVE_COLORS: Record<string, string> = {
+    all: '#38bdf8',
+    unique: '#10b981',
+    shared: '#a855f7',
+    metadata: '#0284c7',
+    corrupted: '#ef4444',
+    free: '#64748b',
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '0.85rem' }}>
@@ -656,31 +1084,95 @@ export default function StorageMap() {
               borderRadius: '6px',
             }}
           >
-            {(['all', 'unique', 'shared', 'metadata', 'corrupted', 'free'] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setBlockFilter(f)}
-                style={{
-                  padding: '4px 9px',
-                  borderRadius: '4px',
-                  fontSize: '0.74rem',
-                  fontWeight: 600,
-                  border: 'none',
-                  cursor: 'pointer',
-                  background:
-                    blockFilter === f ? (f === 'shared' ? '#a855f7' : '#38bdf8') : 'transparent',
-                  color: blockFilter === f ? '#0f172a' : '#94a3b8',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
+            {(['all', 'unique', 'shared', 'metadata', 'corrupted', 'free'] as const).map((f) => {
+              const isActive = blockFilter === f
+              const activeBg = FILTER_ACTIVE_COLORS[f] ?? '#38bdf8'
+              const count = stateCounts[f] ?? 0
+
+              return (
+                <button
+                  key={f}
+                  onClick={() => {
+                    setBlockFilter(f)
+                    if (f !== 'all') {
+                      // Check if currently selected block already matches
+                      const currMatches =
+                        selectedBlockId !== null &&
+                        selectedBlockId >= 0 &&
+                        selectedBlockId < gridBlocks.length &&
+                        (GRID_STATE_MAP[gridBlocks[selectedBlockId]] ?? 'free') === f
+
+                      if (!currMatches) {
+                        const matchIdx = gridBlocks.findIndex(
+                          (s) => (GRID_STATE_MAP[s] ?? 'free') === f
+                        )
+                        if (matchIdx !== -1) {
+                          setSelectedBlockId(matchIdx)
+                        }
+                      }
+                    }
+                  }}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '4px',
+                    fontSize: '0.74rem',
+                    fontWeight: 600,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: isActive ? activeBg : 'transparent',
+                    color: isActive ? '#0f172a' : '#94a3b8',
+                    transition: 'all 0.15s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <span>{f.charAt(0).toUpperCase() + f.slice(1)}</span>
+                  {count > 0 && (
+                    <span
+                      style={{
+                        fontSize: '0.66rem',
+                        padding: '1px 5px',
+                        borderRadius: '999px',
+                        background: isActive ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.08)',
+                        color: isActive ? '#0f172a' : '#94a3b8',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
 
         {/* View Mode & Link Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+          {/* 75% Partial Dedup Viva Demo Button */}
+          <button
+            onClick={() => setShow75Modal(true)}
+            style={{
+              background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.22) 0%, rgba(2, 132, 199, 0.22) 100%)',
+              border: '1px solid rgba(168, 85, 247, 0.55)',
+              color: theme === 'light' ? '#6b21a8' : '#e9d5ff',
+              padding: '4px 11px',
+              borderRadius: '6px',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              boxShadow: '0 0 10px rgba(168, 85, 247, 0.25)',
+              transition: 'all 0.15s ease',
+            }}
+            title="Viva Defense: How AeroFS handles files with 75% identical blocks"
+          >
+            <span>🎨</span> 75% Dedup Viva Demo
+          </button>
+
           {/* View mode switcher */}
           {!use2DFallback && (
             <div
@@ -853,12 +1345,43 @@ export default function StorageMap() {
       >
         {use2DFallback || webglError ? (
           <div style={{ padding: '1.5rem', height: '100%', overflowY: 'auto' }}>
-            <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                 Displaying 2D Flat Matrix (4,096 blocks): Click any block to inspect details
               </span>
+              {blockFilter !== 'all' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      padding: '3px 9px',
+                      borderRadius: '12px',
+                      background: blockFilter === 'shared' ? 'rgba(168, 85, 247, 0.18)' : 'rgba(56, 189, 248, 0.18)',
+                      color: blockFilter === 'shared' ? '#c084fc' : '#38bdf8',
+                      border: `1px solid ${blockFilter === 'shared' ? '#a855f7' : '#38bdf8'}`,
+                    }}
+                  >
+                    Active Filter: {blockFilter.toUpperCase()} ({stateCounts[blockFilter]} blocks highlighted)
+                  </span>
+                  <button
+                    onClick={() => setBlockFilter('all')}
+                    style={{
+                      background: 'none',
+                      border: '1px solid var(--border-dim)',
+                      borderRadius: '4px',
+                      padding: '2px 8px',
+                      fontSize: '0.72rem',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Reset to All
+                  </button>
+                </div>
+              )}
             </div>
-            <BlockGrid2D gridBlocks={gridBlocks} highlightIds={highlightedBlockIds} />
+            <BlockGrid2D gridBlocks={gridBlocks} highlightIds={highlightedBlockIds} filter={blockFilter} />
           </div>
         ) : (
           <>
@@ -882,6 +1405,7 @@ export default function StorageMap() {
                     gridBlocks={gridBlocks}
                     selectedBlockId={selectedBlockId}
                     hoveredBlockId={hoveredId}
+                    filter={blockFilter}
                     onSelectBlock={(id) => setSelectedBlockId(id)}
                     onHoverBlock={(id) => setHoveredId(id)}
                     onSelectFile={(name) => setSelectedFileName(name)}
@@ -907,6 +1431,7 @@ export default function StorageMap() {
                   selectedBlockId={selectedBlockId}
                   hoveredBlockId={hoveredId}
                   highlightedBlockIds={highlightedBlockIds}
+                  filter={blockFilter}
                   theme={theme}
                   onSelectBlock={(id) => setSelectedBlockId(id)}
                   onHoverBlock={(id) => setHoveredId(id)}
@@ -919,6 +1444,7 @@ export default function StorageMap() {
                   selectedBlockId={selectedBlockId}
                   hoveredBlockId={hoveredId}
                   linkMode={linkMode}
+                  filter={blockFilter}
                 />
               </Suspense>
 
@@ -930,6 +1456,69 @@ export default function StorageMap() {
               />
               <SceneCameraController viewMode={viewMode} resetTrigger={cameraResetCounter} />
             </Canvas>
+
+            {/* Active Filter Pill Badge (Top-Right of 3D Viewport) */}
+            {blockFilter !== 'all' && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 16,
+                  right: 16,
+                  background: 'rgba(15, 23, 42, 0.88)',
+                  backdropFilter: 'blur(10px)',
+                  border: `1px solid ${FILTER_ACTIVE_COLORS[blockFilter] ?? '#38bdf8'}`,
+                  padding: '5px 12px',
+                  borderRadius: '20px',
+                  fontSize: '0.76rem',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: `0 0 16px ${
+                    blockFilter === 'shared'
+                      ? 'rgba(168, 85, 247, 0.45)'
+                      : blockFilter === 'unique'
+                      ? 'rgba(16, 185, 129, 0.45)'
+                      : 'rgba(56, 189, 248, 0.45)'
+                  }`,
+                  zIndex: 10,
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: FILTER_ACTIVE_COLORS[blockFilter] ?? '#38bdf8',
+                    boxShadow: `0 0 6px ${FILTER_ACTIVE_COLORS[blockFilter] ?? '#38bdf8'}`,
+                  }}
+                />
+                <span>
+                  Highlighting: <strong>{blockFilter.toUpperCase()}</strong> ({stateCounts[blockFilter]} blocks)
+                </span>
+                <button
+                  onClick={() => setBlockFilter('all')}
+                  style={{
+                    background: 'rgba(255,255,255,0.15)',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '16px',
+                    height: '16px',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '0.65rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                    lineHeight: 1,
+                  }}
+                  title="Clear filter (Show All)"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             {/* Hover Tooltip Overlay (Top-Left) */}
             {hoveredId !== null && hoveredState && (
@@ -1066,6 +1655,18 @@ export default function StorageMap() {
           </>
         )}
       </div>
+
+      {/* 75% Partial Block Deduplication Modal */}
+      <PartialDedupModal
+        isOpen={show75Modal}
+        onClose={() => setShow75Modal(false)}
+        onDeployed={(sharedBlocks) => {
+          setViewMode('dedup')
+          setUse2DFallback(false)
+          if (sharedBlocks.length > 0) setSelectedBlockId(sharedBlocks[0])
+        }}
+        theme={theme}
+      />
     </div>
   )
 }

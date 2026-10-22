@@ -27,6 +27,7 @@ interface LogicalFiles3DProps {
   gridBlocks: number[]
   selectedBlockId: number | null
   hoveredBlockId: number | null
+  filter?: string
   onSelectBlock: (id: number) => void
   onHoverBlock: (id: number | null) => void
   onSelectFile?: (fileName: string) => void
@@ -38,6 +39,7 @@ export default function LogicalFiles3D({
   gridBlocks,
   selectedBlockId,
   hoveredBlockId,
+  filter = 'all',
   onSelectBlock,
   onHoverBlock,
   onSelectFile,
@@ -59,6 +61,7 @@ export default function LogicalFiles3D({
   }, [files, gridBlocks])
 
   const activeId = hoveredBlockId !== null ? hoveredBlockId : selectedBlockId
+  const isFilterActive = filter && filter !== 'all'
 
   return (
     <group>
@@ -143,17 +146,28 @@ export default function LogicalFiles3D({
               {`📄 ${file.name}`}
             </Text>
 
-            {/* Inode & Deduplication Tag */}
+            {/* Inode & Deduplication Tag with Partial % Breakdown */}
             <Text
               position={[-4.3, 0.4, 0.25]}
-              fontSize={0.42}
+              fontSize={0.36}
               color={hasShared ? (theme === 'light' ? '#7e22ce' : '#c084fc') : (theme === 'light' ? '#475569' : '#94a3b8')}
               anchorX="left"
               anchorY="middle"
+              fontWeight="bold"
             >
-              {`Inode #${file.inode_id ?? fileIdx + 1} · ${file.num_blocks} Block${file.num_blocks !== 1 ? 's' : ''}${
-                hasShared ? ' · 🔗 CAS DEDUPLICATED' : ''
-              }`}
+              {(() => {
+                const totalCount = file.block_ids?.length ?? 1
+                const sharedCount = file.block_ids?.filter((b) => sharedBlockIds.has(b)).length ?? 0
+                const isPartial = sharedCount > 0 && sharedCount < totalCount
+                const pct = Math.round((sharedCount / totalCount) * 100)
+                if (isPartial) {
+                  return `Inode #${file.inode_id ?? fileIdx + 1} · ${totalCount} Blk · ⚡ ${pct}% CAS SHARED (${sharedCount}/${totalCount} shared · ${totalCount - sharedCount} unique)`
+                }
+                if (sharedCount === totalCount && totalCount > 0) {
+                  return `Inode #${file.inode_id ?? fileIdx + 1} · ${totalCount} Blk · 🔗 100% CAS DEDUPLICATED (${sharedCount} blk)`
+                }
+                return `Inode #${file.inode_id ?? fileIdx + 1} · ${totalCount} Block${totalCount !== 1 ? 's' : ''}`
+              })()}
             </Text>
 
             {/* ── File's Logical Block Nodes ──────────────────────────────── */}
@@ -163,6 +177,14 @@ export default function LogicalFiles3D({
               const isHovered = hoveredBlockId === bid
               const isActive = activeId === bid
 
+              const matchesFilter =
+                !isFilterActive ||
+                (filter === 'shared' && isShared) ||
+                (filter === 'unique' && !isShared)
+
+              const isFilterMatch = isFilterActive && matchesFilter
+              const isFilteredOut = isFilterActive && !matchesFilter
+
               const bx = -2.8 + bIdx * 1.3
               const by = -0.6
               const bz = 0.35
@@ -170,7 +192,20 @@ export default function LogicalFiles3D({
               let blockColor = isShared ? '#a855f7' : '#0284c7'
               if (isSelected) blockColor = '#ffffff'
               else if (isHovered) blockColor = '#38bdf8'
-              else if (isShared) blockColor = '#c084fc'
+              else if (isFilterMatch) {
+                blockColor = isShared ? '#d946ef' : '#10b981'
+              } else if (isFilteredOut) {
+                blockColor = theme === 'light' ? '#cbd5e1' : '#1e293b'
+              } else if (isShared) {
+                blockColor = '#c084fc'
+              }
+
+              let tileScale: [number, number, number] = isActive ? [1.25, 1.25, 1.35] : [1, 1, 1]
+              if (isFilterMatch) {
+                tileScale = [1.25, 1.25, 1.45]
+              } else if (isFilteredOut) {
+                tileScale = [0.75, 0.75, 0.35]
+              }
 
               return (
                 <group key={`${file.name}-b${bid}-${bIdx}`} position={[bx, by, bz]}>
@@ -185,20 +220,20 @@ export default function LogicalFiles3D({
                       onHoverBlock(bid)
                     }}
                     onPointerOut={() => onHoverBlock(null)}
-                    scale={isActive ? [1.2, 1.2, 1.3] : [1, 1, 1]}
+                    scale={tileScale}
                   >
                     <boxGeometry args={[1.05, 1.05, 0.35]} />
                     <meshStandardMaterial
                       color={blockColor}
-                      metalness={0.6}
-                      roughness={0.3}
+                      metalness={isFilterMatch ? 0.8 : 0.6}
+                      roughness={isFilterMatch ? 0.2 : 0.3}
                     />
                   </mesh>
 
                   {/* Block Index Label on Tile */}
                   <Text
-                    position={[0, 0.15, 0.22]}
-                    fontSize={0.34}
+                    position={[0, 0.2, 0.22]}
+                    fontSize={0.30}
                     color={isSelected ? '#0f172a' : '#ffffff'}
                     anchorX="center"
                     anchorY="middle"
@@ -207,13 +242,23 @@ export default function LogicalFiles3D({
                     {`#${bid}`}
                   </Text>
                   <Text
-                    position={[0, -0.22, 0.22]}
-                    fontSize={0.24}
-                    color={isSelected ? '#334155' : '#cbd5e1'}
+                    position={[0, -0.05, 0.22]}
+                    fontSize={0.21}
+                    color={isSelected ? '#334155' : isShared ? '#f3e8ff' : '#cbd5e1'}
+                    anchorX="center"
+                    anchorY="middle"
+                    fontWeight={isShared ? 'bold' : 'normal'}
+                  >
+                    {isShared ? `Part ${bIdx + 1} (Shared)` : `Part ${bIdx + 1} (Unique)`}
+                  </Text>
+                  <Text
+                    position={[0, -0.27, 0.22]}
+                    fontSize={0.18}
+                    color={isSelected ? '#475569' : isShared ? '#e9d5ff' : '#7dd3fc'}
                     anchorX="center"
                     anchorY="middle"
                   >
-                    {`Chunk ${bIdx}`}
+                    {isShared ? `Refcount: 2` : `4KB Chunk ${bIdx}`}
                   </Text>
                 </group>
               )

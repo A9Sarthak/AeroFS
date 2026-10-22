@@ -679,6 +679,57 @@ async def simulate_demo_workload():
     }
 
 
+@app.post("/api/simulate/partial_dedup_75")
+async def simulate_partial_dedup_75():
+    """
+    Demonstrates block-level deduplication with 75% identical data.
+    File A (16 KB = 4 blocks): [Part 1, Part 2, Part 3, Part 4 (Old)]
+    File B (16 KB = 4 blocks): [Part 1, Part 2, Part 3, Part 4 (New)]
+    - Parts 1, 2, and 3 are 100% identical 4096-byte blocks shared via CAS (refcount = 2).
+    - Part 4 (Old) and Part 4 (New) are unique 4096-byte blocks (refcount = 1).
+    Total logical size: 32 KB (8 blocks).
+    Total physical disk consumed: 20 KB (5 blocks).
+    Total saved: 12 KB (3 blocks = 37.5% net reduction, 75% file sharing).
+    """
+    p1 = ("PART_1_AEROFS_BLOCK_LEVEL_CAS_IDENTICAL_CHUNK_HEADER\n" + ("A" * 80 + "\n") * 48).encode("utf-8")[:4096].ljust(4096, b"\x00")
+    p2 = ("PART_2_AEROFS_BLOCK_LEVEL_CAS_IDENTICAL_CHUNK_HEADER\n" + ("B" * 80 + "\n") * 48).encode("utf-8")[:4096].ljust(4096, b"\x00")
+    p3 = ("PART_3_AEROFS_BLOCK_LEVEL_CAS_IDENTICAL_CHUNK_HEADER\n" + ("C" * 80 + "\n") * 48).encode("utf-8")[:4096].ljust(4096, b"\x00")
+    p4_old = ("PART_4_AEROFS_UNIQUE_BLOCK_ORIGINAL_OLD_VERSION\n" + ("D" * 80 + "\n") * 48).encode("utf-8")[:4096].ljust(4096, b"\x00")
+    p4_new = ("PART_4_AEROFS_UNIQUE_BLOCK_MUTATED_NEW_VERSION\n" + ("E" * 80 + "\n") * 48).encode("utf-8")[:4096].ljust(4096, b"\x00")
+
+    file_a_data = p1 + p2 + p3 + p4_old  # 16384 bytes
+    file_b_data = p1 + p2 + p3 + p4_new  # 16384 bytes
+
+    inode_a, dedup_a = fs.write_file("file_a.bin", file_a_data)
+    inode_b, dedup_b = fs.write_file("file_b.bin", file_b_data)
+
+    shared_blocks = [b for b in inode_a.block_ids if b in inode_b.block_ids]
+    file_a_unique = [b for b in inode_a.block_ids if b not in inode_b.block_ids]
+    file_b_unique = [b for b in inode_b.block_ids if b not in inode_a.block_ids]
+
+    return {
+        "status": "success",
+        "message": "Created File A and File B (75% Identical Content). 3 shared blocks reused via CAS, 1 unique block allocated for each file.",
+        "file_a": {
+            "name": "file_a.bin",
+            "size": len(file_a_data),
+            "block_ids": inode_a.block_ids,
+        },
+        "file_b": {
+            "name": "file_b.bin",
+            "size": len(file_b_data),
+            "block_ids": inode_b.block_ids,
+        },
+        "shared_blocks": shared_blocks,
+        "shared_count": len(shared_blocks),
+        "file_a_unique": file_a_unique,
+        "file_b_unique": file_b_unique,
+        "dedup_hits": dedup_b,
+        "space_saved_bytes": len(shared_blocks) * fs.block_size,
+        "telemetry": fs.get_system_telemetry()
+    }
+
+
 @app.get("/api/simulate/patrol_status")
 async def get_patrol_status():
     """Returns the live status of the auto-healing background patrol daemon."""

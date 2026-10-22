@@ -165,6 +165,21 @@ export const simulateWorkload = () =>
     { method: 'POST' }
   )
 
+export const simulatePartialDedup75 = () =>
+  request<{
+    status: string
+    message: string
+    file_a: { name: string; size: number; block_ids: number[] }
+    file_b: { name: string; size: number; block_ids: number[] }
+    shared_blocks: number[]
+    shared_count: number
+    file_a_unique: number[]
+    file_b_unique: number[]
+    dedup_hits: number
+    space_saved_bytes: number
+    telemetry: TelemetryResponse
+  }>('/simulate/partial_dedup_75', { method: 'POST' })
+
 // ---- Benchmark ----
 export const runBenchmark = (workload: string) =>
   request<BenchmarkResponse>('/benchmark', {

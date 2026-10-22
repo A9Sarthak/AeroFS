@@ -457,7 +457,7 @@ class AeroFileSystem:
         # Classify block states for the visual block grid:
         # 0=Free, 1=System Metadata, 2=Unique Data, 3=CAS Deduplicated (>=2 live files), 4=Corrupted, 5=Snapshot Protected
         block_states = []
-        sample_limit = min(1024, self.dev.total_blocks)
+        sample_limit = self.dev.total_blocks
         for b in range(sample_limit):
             if b in self.dev.corrupted_blocks:
                 block_states.append(4)  # Corrupted / Bit-Rot
