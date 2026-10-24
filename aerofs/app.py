@@ -683,40 +683,79 @@ async def simulate_demo_workload():
 async def simulate_partial_dedup_75():
     """
     Demonstrates block-level deduplication with 75% identical data.
-    File A (16 KB = 4 blocks): [Part 1, Part 2, Part 3, Part 4 (Old)]
-    File B (16 KB = 4 blocks): [Part 1, Part 2, Part 3, Part 4 (New)]
-    - Parts 1, 2, and 3 are 100% identical 4096-byte blocks shared via CAS (refcount = 2).
-    - Part 4 (Old) and Part 4 (New) are unique 4096-byte blocks (refcount = 1).
+    fileA_75pct.txt (16 KB = 4 blocks): [Shared-1, Shared-2, Shared-3, Unique-A]
+    fileB_75pct.txt (16 KB = 4 blocks): [Shared-1, Shared-2, Shared-3, Unique-B]
+    - Shared-1/2/3 are 100% identical 4096-byte text blocks → CAS shares them (refcount = 2).
+    - Unique-A and Unique-B are different 4096-byte blocks (refcount = 1 each).
     Total logical size: 32 KB (8 blocks).
-    Total physical disk consumed: 20 KB (5 blocks).
-    Total saved: 12 KB (3 blocks = 37.5% net reduction, 75% file sharing).
+    Total physical disk consumed: 20 KB (5 unique blocks).
+    Total saved: 12 KB (3 blocks saved → 37.5% net reduction, 75% file-level sharing).
+
+    Each chunk is built as pure ASCII text padded to exactly 4096 bytes so that
+    block boundaries stay predictable regardless of how the file is decoded.
+    The unique section is placed LAST so editing only the tail via the text editor
+    leaves the 3 shared head blocks completely intact and still purple on the grid.
     """
-    p1 = ("PART_1_AEROFS_BLOCK_LEVEL_CAS_IDENTICAL_CHUNK_HEADER\n" + ("A" * 80 + "\n") * 48).encode("utf-8")[:4096].ljust(4096, b"\x00")
-    p2 = ("PART_2_AEROFS_BLOCK_LEVEL_CAS_IDENTICAL_CHUNK_HEADER\n" + ("B" * 80 + "\n") * 48).encode("utf-8")[:4096].ljust(4096, b"\x00")
-    p3 = ("PART_3_AEROFS_BLOCK_LEVEL_CAS_IDENTICAL_CHUNK_HEADER\n" + ("C" * 80 + "\n") * 48).encode("utf-8")[:4096].ljust(4096, b"\x00")
-    p4_old = ("PART_4_AEROFS_UNIQUE_BLOCK_ORIGINAL_OLD_VERSION\n" + ("D" * 80 + "\n") * 48).encode("utf-8")[:4096].ljust(4096, b"\x00")
-    p4_new = ("PART_4_AEROFS_UNIQUE_BLOCK_MUTATED_NEW_VERSION\n" + ("E" * 80 + "\n") * 48).encode("utf-8")[:4096].ljust(4096, b"\x00")
 
-    file_a_data = p1 + p2 + p3 + p4_old  # 16384 bytes
-    file_b_data = p1 + p2 + p3 + p4_new  # 16384 bytes
+    def _make_chunk(header: str, fill_char: str) -> bytes:
+        """Build an exactly 4096-byte block: ASCII header + fill lines + zero-pad."""
+        line = fill_char * 78 + "\n"           # 79-char lines
+        body = header + "\n" + line * 55        # header + 55 fill lines ≈ 4 400 chars
+        encoded = body.encode("utf-8")[:4095]   # trim to 4095 bytes
+        return (encoded + b"\n").ljust(4096, b"\x00")  # 4096th byte = newline, rest zero
 
-    inode_a, dedup_a = fs.write_file("file_a.bin", file_a_data)
-    inode_b, dedup_b = fs.write_file("file_b.bin", file_b_data)
+    # Three blocks with IDENTICAL content in both files (the 75% shared portion)
+    shared_1 = _make_chunk(
+        "=== SHARED BLOCK 1/3 | AeroFS CAS Dedup Demo | Part 1 of 4 ===",
+        "S"
+    )
+    shared_2 = _make_chunk(
+        "=== SHARED BLOCK 2/3 | AeroFS CAS Dedup Demo | Part 2 of 4 ===",
+        "H"
+    )
+    shared_3 = _make_chunk(
+        "=== SHARED BLOCK 3/3 | AeroFS CAS Dedup Demo | Part 3 of 4 ===",
+        "A"
+    )
 
-    shared_blocks = [b for b in inode_a.block_ids if b in inode_b.block_ids]
-    file_a_unique = [b for b in inode_a.block_ids if b not in inode_b.block_ids]
-    file_b_unique = [b for b in inode_b.block_ids if b not in inode_a.block_ids]
+    # Unique tail blocks — different content per file (the 25% divergence)
+    unique_a = _make_chunk(
+        "=== UNIQUE BLOCK | fileA_75pct.txt | Part 4 of 4 | EDIT HERE ===",
+        "A"
+    )
+    unique_b = _make_chunk(
+        "=== UNIQUE BLOCK | fileB_75pct.txt | Part 4 of 4 | EDIT HERE ===",
+        "B"
+    )
+
+    file_a_data = shared_1 + shared_2 + shared_3 + unique_a  # 16 384 bytes
+    file_b_data = shared_1 + shared_2 + shared_3 + unique_b  # 16 384 bytes
+
+    inode_a, dedup_a = fs.write_file("fileA_75pct.txt", file_a_data)
+    inode_b, dedup_b = fs.write_file("fileB_75pct.txt", file_b_data)
+
+    # Use set arithmetic so repeated intra-file block IDs don't produce duplicates
+    a_set = set(inode_a.block_ids)
+    b_set = set(inode_b.block_ids)
+    shared_blocks = sorted(a_set & b_set)       # blocks common to both files
+    file_a_unique = sorted(a_set - b_set)       # blocks only in file A
+    file_b_unique = sorted(b_set - a_set)       # blocks only in file B
 
     return {
         "status": "success",
-        "message": "Created File A and File B (75% Identical Content). 3 shared blocks reused via CAS, 1 unique block allocated for each file.",
+        "message": (
+            f"Created fileA_75pct.txt & fileB_75pct.txt (75% Identical Content). "
+            f"{len(shared_blocks)} shared block(s) reused via CAS, "
+            f"{len(file_a_unique)} unique block(s) for File A, "
+            f"{len(file_b_unique)} unique block(s) for File B."
+        ),
         "file_a": {
-            "name": "file_a.bin",
+            "name": "fileA_75pct.txt",
             "size": len(file_a_data),
             "block_ids": inode_a.block_ids,
         },
         "file_b": {
-            "name": "file_b.bin",
+            "name": "fileB_75pct.txt",
             "size": len(file_b_data),
             "block_ids": inode_b.block_ids,
         },

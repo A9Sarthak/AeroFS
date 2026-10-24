@@ -191,11 +191,13 @@ export default function HardDrive3D({
     e.stopPropagation()
     const instanceId = e.instanceId
     if (instanceId !== undefined && instanceId >= 0 && instanceId < total) {
+      document.body.style.cursor = 'pointer'
       onHoverBlock(instanceId)
     }
   }
 
   const handlePointerOut = () => {
+    document.body.style.cursor = 'auto'
     onHoverBlock(null)
   }
 

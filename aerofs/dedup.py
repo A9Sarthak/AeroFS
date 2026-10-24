@@ -110,6 +110,9 @@ class DeduplicationEngine:
         dedup_ratio = round(logical_bytes / physical_bytes, 2) if physical_bytes > 0 else 1.0
 
         return {
+            "total_chunks": self.logical_blocks_written,
+            "unique_chunks": physical_unique_blocks,
+            "blocks_saved": bytes_saved // self.dev.block_size,
             "logical_blocks_written": self.logical_blocks_written,
             "physical_unique_blocks": physical_unique_blocks,
             "dedup_hits": self.dedup_hits,
@@ -119,3 +122,4 @@ class DeduplicationEngine:
             "savings_percent": savings_percent,
             "dedup_ratio": f"{dedup_ratio}x"
         }
+

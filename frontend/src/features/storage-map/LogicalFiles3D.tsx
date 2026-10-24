@@ -136,24 +136,26 @@ export default function LogicalFiles3D({
 
             {/* File Icon & Name */}
             <Text
-              position={[-4.3, 1.1, 0.25]}
-              fontSize={0.65}
+              position={[-4.3, 1.15, 0.25]}
+              fontSize={0.58}
               color={hasShared ? (theme === 'light' ? '#581c87' : '#e9d5ff') : (theme === 'light' ? '#0f172a' : '#f8fafc')}
               anchorX="left"
               anchorY="middle"
               fontWeight="bold"
+              raycast={() => null}
             >
               {`📄 ${file.name}`}
             </Text>
 
             {/* Inode & Deduplication Tag with Partial % Breakdown */}
             <Text
-              position={[-4.3, 0.4, 0.25]}
-              fontSize={0.36}
+              position={[-4.3, 0.45, 0.25]}
+              fontSize={0.28}
               color={hasShared ? (theme === 'light' ? '#7e22ce' : '#c084fc') : (theme === 'light' ? '#475569' : '#94a3b8')}
               anchorX="left"
               anchorY="middle"
               fontWeight="bold"
+              raycast={() => null}
             >
               {(() => {
                 const totalCount = file.block_ids?.length ?? 1
@@ -208,7 +210,23 @@ export default function LogicalFiles3D({
               }
 
               return (
-                <group key={`${file.name}-b${bid}-${bIdx}`} position={[bx, by, bz]}>
+                <group
+                  key={`${file.name}-b${bid}-${bIdx}`}
+                  position={[bx, by, bz]}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onSelectBlock(bid)
+                  }}
+                  onPointerOver={(e) => {
+                    e.stopPropagation()
+                    document.body.style.cursor = 'pointer'
+                    onHoverBlock(bid)
+                  }}
+                  onPointerOut={() => {
+                    document.body.style.cursor = 'auto'
+                    onHoverBlock(null)
+                  }}
+                >
                   {/* Logical Block Tile */}
                   <mesh
                     onClick={(e) => {
@@ -217,12 +235,16 @@ export default function LogicalFiles3D({
                     }}
                     onPointerOver={(e) => {
                       e.stopPropagation()
+                      document.body.style.cursor = 'pointer'
                       onHoverBlock(bid)
                     }}
-                    onPointerOut={() => onHoverBlock(null)}
+                    onPointerOut={() => {
+                      document.body.style.cursor = 'auto'
+                      onHoverBlock(null)
+                    }}
                     scale={tileScale}
                   >
-                    <boxGeometry args={[1.05, 1.05, 0.35]} />
+                    <boxGeometry args={[1.1, 1.1, 0.35]} />
                     <meshStandardMaterial
                       color={blockColor}
                       metalness={isFilterMatch ? 0.8 : 0.6}
@@ -232,33 +254,47 @@ export default function LogicalFiles3D({
 
                   {/* Block Index Label on Tile */}
                   <Text
-                    position={[0, 0.2, 0.22]}
-                    fontSize={0.30}
+                    position={[0, 0.28, 0.22]}
+                    fontSize={0.28}
                     color={isSelected ? '#0f172a' : '#ffffff'}
                     anchorX="center"
                     anchorY="middle"
                     fontWeight="bold"
+                    raycast={() => null}
                   >
                     {`#${bid}`}
                   </Text>
                   <Text
-                    position={[0, -0.05, 0.22]}
-                    fontSize={0.21}
-                    color={isSelected ? '#334155' : isShared ? '#f3e8ff' : '#cbd5e1'}
+                    position={[0, 0.06, 0.22]}
+                    fontSize={0.19}
+                    color={isSelected ? '#334155' : isShared ? '#f3e8ff' : '#e0f2fe'}
                     anchorX="center"
                     anchorY="middle"
-                    fontWeight={isShared ? 'bold' : 'normal'}
+                    fontWeight="bold"
+                    raycast={() => null}
                   >
-                    {isShared ? `Part ${bIdx + 1} (Shared)` : `Part ${bIdx + 1} (Unique)`}
+                    {`Part ${bIdx + 1}`}
                   </Text>
                   <Text
-                    position={[0, -0.27, 0.22]}
-                    fontSize={0.18}
-                    color={isSelected ? '#475569' : isShared ? '#e9d5ff' : '#7dd3fc'}
+                    position={[0, -0.15, 0.22]}
+                    fontSize={0.15}
+                    color={isSelected ? '#475569' : isShared ? '#fae8ff' : '#a7f3d0'}
                     anchorX="center"
                     anchorY="middle"
+                    fontWeight="bold"
+                    raycast={() => null}
                   >
-                    {isShared ? `Refcount: 2` : `4KB Chunk ${bIdx}`}
+                    {isShared ? '🔗 Shared' : '🟢 Unique'}
+                  </Text>
+                  <Text
+                    position={[0, -0.34, 0.22]}
+                    fontSize={0.13}
+                    color={isSelected ? '#64748b' : isShared ? '#e9d5ff' : '#7dd3fc'}
+                    anchorX="center"
+                    anchorY="middle"
+                    raycast={() => null}
+                  >
+                    {isShared ? 'Ref: 2 (CAS)' : '4KB Sector'}
                   </Text>
                 </group>
               )
