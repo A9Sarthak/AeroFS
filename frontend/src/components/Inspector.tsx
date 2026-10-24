@@ -73,6 +73,29 @@ export default function Inspector({ telemetry }: Props) {
             {blockDetails.is_allocated ? (blockDetails.hash_matches ? '✅ Match' : '❌ Mismatch') : '—'}
           </span>
         </div>
+        <div className="inspector-row">
+          <span className="inspector-label">Sharing</span>
+          <span className="inspector-value" style={{
+            color: blockDetails.refcount > 1 ? 'var(--status-purple)' : 'var(--status-ok)',
+            fontWeight: 700
+          }}>
+            {blockDetails.sharing_label || (blockDetails.refcount > 1 ? '🔗 CAS Shared' : '🟢 Unique')}
+          </span>
+        </div>
+        {blockDetails.sharing_explanation && (
+          <div style={{
+            fontSize: '0.72rem',
+            padding: '6px 8px',
+            borderRadius: 4,
+            background: blockDetails.refcount > 1 ? 'rgba(168, 85, 247, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+            border: `1px solid ${blockDetails.refcount > 1 ? 'rgba(168, 85, 247, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
+            color: blockDetails.refcount > 1 ? '#c084fc' : '#34d399',
+            lineHeight: 1.4,
+            marginBottom: 8,
+          }}>
+            {blockDetails.sharing_explanation}
+          </div>
+        )}
         {blockDetails.expected_hash && (
           <div className="inspector-row" style={{ flexDirection: 'column', gap: 4 }}>
             <span className="inspector-label">Expected SHA-256</span>
@@ -90,13 +113,43 @@ export default function Inspector({ telemetry }: Props) {
             </span>
           </div>
         )}
+        {blockDetails.data_text && (
+          <div className="inspector-row" style={{ flexDirection: 'column', gap: 4 }}>
+            <span className="inspector-label">Block Payload Content (4KB Sector)</span>
+            <div style={{
+              maxHeight: 140,
+              overflowY: 'auto',
+              background: 'var(--bg-input)',
+              border: '1px solid var(--border-dim)',
+              borderRadius: 4,
+              padding: '6px 8px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.72rem',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              color: 'var(--text-primary)',
+            }}>
+              {blockDetails.data_text}
+            </div>
+          </div>
+        )}
         {blockDetails.referencing_files.length > 0 && (
           <div className="inspector-row" style={{ flexDirection: 'column', gap: 4 }}>
-            <span className="inspector-label">Owner Files</span>
-            {blockDetails.referencing_files.map((f) => (
-              <span key={f} className="chip" style={{ cursor: 'pointer' }}
-                onClick={() => setSelectedView('files')}>📄 {f}</span>
-            ))}
+            <span className="inspector-label">Owner Files & Chunks</span>
+            {blockDetails.file_chunks && blockDetails.file_chunks.length > 0 ? (
+              blockDetails.file_chunks.map((fc, i) => (
+                <span key={i} className="chip" style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  onClick={() => setSelectedView('files')}>
+                  <span>📄 {fc.file_name}</span>
+                  <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>Part {fc.chunk_part}/{fc.total_chunks}</span>
+                </span>
+              ))
+            ) : (
+              blockDetails.referencing_files.map((f) => (
+                <span key={f} className="chip" style={{ cursor: 'pointer' }}
+                  onClick={() => setSelectedView('files')}>📄 {f}</span>
+              ))
+            )}
           </div>
         )}
         {blockDetails.referencing_snapshots.length > 0 && (

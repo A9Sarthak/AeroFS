@@ -1,0 +1,1153 @@
+{
+  "tests/test_aerofs.py": {
+    "file_doc": "Automated Unit Tests for AeroFS Subsystems\nVerifies Block Device, Content-Addressable Deduplication, Merkle Trees, and CoW Snapshots.",
+    "tests": [
+      {
+        "class": null,
+        "name": "test_virtual_block_device",
+        "doc": "Verifies low-level physical block read, write, and allocation bitmap.",
+        "line": 30
+      },
+      {
+        "class": null,
+        "name": "test_chunk_deduplication",
+        "doc": "Verifies Content-Addressable Storage (CAS) zero-allocation duplicate handling.",
+        "line": 53
+      },
+      {
+        "class": null,
+        "name": "test_copy_on_write_and_snapshots",
+        "doc": "Verifies instant O(1) snapshots and Copy-on-Write immutability.",
+        "line": 83
+      },
+      {
+        "class": null,
+        "name": "test_merkle_tree_bit_rot_detection",
+        "doc": "Verifies cryptographic Merkle tree detects silent physical storage bit flips.",
+        "line": 105
+      },
+      {
+        "class": null,
+        "name": "test_merkle_inspection_and_tree_structure",
+        "doc": "Verifies Merkle tree depth, structural export, and ASCII rendering.",
+        "line": 128
+      },
+      {
+        "class": null,
+        "name": "test_block_telemetry_details",
+        "doc": "Verifies detailed block inspector returns refcounts, hashes, and referencing files.",
+        "line": 142
+      },
+      {
+        "class": null,
+        "name": "test_self_healing_bit_rot",
+        "doc": "Verifies that AeroFS can automatically detect and self-heal corrupted blocks.",
+        "line": 156
+      }
+    ]
+  },
+  "tests/test_aerofs_studio_api.py": {
+    "file_doc": "Unit & Integration Tests for AeroFS Studio API Additions\nTests health endpoint, file listing, snapshot listing, file duplicate (CAS dedup),\nbenchmark suite, and CORS headers.",
+    "tests": [
+      {
+        "class": null,
+        "name": "test_health_endpoint",
+        "doc": "",
+        "line": 20
+      },
+      {
+        "class": null,
+        "name": "test_list_files_and_snapshots_endpoints",
+        "doc": "",
+        "line": 32
+      },
+      {
+        "class": null,
+        "name": "test_duplicate_file_cas_deduplication",
+        "doc": "",
+        "line": 63
+      },
+      {
+        "class": null,
+        "name": "test_benchmark_endpoint",
+        "doc": "",
+        "line": 92
+      },
+      {
+        "class": null,
+        "name": "test_cli_execute_endpoint",
+        "doc": "",
+        "line": 106
+      }
+    ]
+  },
+  "tests/test_best_fit_allocation.py": {
+    "file_doc": "",
+    "tests": [
+      {
+        "class": null,
+        "name": "test_virtual_block_device_best_fit",
+        "doc": "",
+        "line": 7
+      },
+      {
+        "class": null,
+        "name": "test_file_deletion_and_reoccupation",
+        "doc": "Tests that when files are deleted, their blocks are freed,\nand new files created afterwards reclaim and occupy that space efficiently via Best-Fit.",
+        "line": 58
+      },
+      {
+        "class": null,
+        "name": "test_external_fragmentation_metric",
+        "doc": "",
+        "line": 109
+      },
+      {
+        "class": null,
+        "name": "test_best_fit_preview_and_large_file_api",
+        "doc": "",
+        "line": 129
+      },
+      {
+        "class": null,
+        "name": "test_large_file_skips_small_hole_in_contiguous_mode_and_fills_in_hole_filling_mode",
+        "doc": "Directly validates the user scenario:\n- Free Hole 1 has 8 blocks (sectors 4..11).\n- File 1 needs 64 blocks.\n- Contiguous Best-Fit skips Hole 1 because 8 < 64 (avoiding fragmentation),\n  allocating the 64 blocks contiguously in Hole 2 (sectors 14..77).\n- An 8-block file fits Hole 1 exactly (sectors 4..11).\n- In fill_holes_first=True mode, the 64-block file fills Hole 1 first (4..11)\n  and spills remainder into Hole 2.",
+        "line": 161
+      }
+    ]
+  },
+  "tests/test_client_sync.py": {
+    "file_doc": "Test Suite for AeroFS Remote Client & Live Web Synchronization\nVerifies that the CLI client seamlessly mutates and queries the live web server.",
+    "tests": [
+      {
+        "class": null,
+        "name": "test_client_connection_and_telemetry",
+        "doc": "Verifies that the client can connect and fetch telemetry from the server.",
+        "line": 48
+      },
+      {
+        "class": null,
+        "name": "test_client_write_read_and_deduplication",
+        "doc": "Verifies that writing via the client updates the server and enables CAS deduplication.",
+        "line": 58
+      },
+      {
+        "class": null,
+        "name": "test_client_snapshots_and_rollback",
+        "doc": "Verifies snapshot creation and rollback over the network client.",
+        "line": 77
+      },
+      {
+        "class": null,
+        "name": "test_client_bitrot_and_self_heal",
+        "doc": "Verifies simulated bit-rot injection and autonomous self-healing via the client.",
+        "line": 97
+      }
+    ]
+  },
+  "tests/test_comprehensive_validation.py": {
+    "file_doc": "AeroFS Comprehensive Validation Suite\n======================================\nValidates every subsystem according to the AeroFS Test Suite and Recovery\nValidation Plan. This single file covers Sections 3\u20136 and 8 of the plan:\n\n  Section 3 \u2014 Core Storage (block device, dedup, CoW/snapshots)\n  Section 4 \u2014 Verified Self-Healing (A through F, highest priority)\n  Section 5 \u2014 API & Client end-to-end integration\n  Section 6 \u2014 Persistence and restart (documents limitations honestly)\n  Section 8 \u2014 Benchmark measurements with honest simulated-value labelling\n\nDesign principles:\n  - Deterministic known byte patterns for all test data.\n  - Pre-corruption reference values (hashes, roots, bytes) are always captured\n    BEFORE any corruption is injected \u2014 never re-derived from corrupt bytes.\n  - Exact byte-for-byte comparisons after every recovery.\n  - Negative / boundary / regression tests alongside positive paths.\n  - Each test creates its own disposable disk and cleans up on failure.\n  - Tests are order-independent (no shared state between tests).",
+    "tests": [
+      {
+        "class": "TestVirtualBlockDevice",
+        "class_doc": "",
+        "name": "test_superblock_magic_and_reserved_blocks",
+        "doc": "Superblock magic is valid and blocks 0-3 are reserved/allocated.",
+        "line": 91
+      },
+      {
+        "class": "TestVirtualBlockDevice",
+        "class_doc": "",
+        "name": "test_write_read_exact_bytes",
+        "doc": "Allocated block write/read returns exact bytes with no corruption.",
+        "line": 104
+      },
+      {
+        "class": "TestVirtualBlockDevice",
+        "class_doc": "",
+        "name": "test_write_smaller_than_block_is_padded",
+        "doc": "Data smaller than block size is zero-padded on write.",
+        "line": 115
+      },
+      {
+        "class": "TestVirtualBlockDevice",
+        "class_doc": "",
+        "name": "test_reject_data_larger_than_block",
+        "doc": "Writing data larger than block size raises ValueError.",
+        "line": 125
+      },
+      {
+        "class": "TestVirtualBlockDevice",
+        "class_doc": "",
+        "name": "test_reject_invalid_block_id_read",
+        "doc": "Reading an out-of-bounds block ID raises IndexError.",
+        "line": 133
+      },
+      {
+        "class": "TestVirtualBlockDevice",
+        "class_doc": "",
+        "name": "test_reject_invalid_block_id_write",
+        "doc": "Writing to an out-of-bounds block ID raises IndexError.",
+        "line": 141
+      },
+      {
+        "class": "TestVirtualBlockDevice",
+        "class_doc": "",
+        "name": "test_free_block_zeroes_content_and_bitmap",
+        "doc": "free_block() zeroes content on disk and clears the bitmap entry.",
+        "line": 147
+      },
+      {
+        "class": "TestVirtualBlockDevice",
+        "class_doc": "",
+        "name": "test_allocation_stats_decrease_on_free",
+        "doc": "Allocation stats reflect freed block correctly.",
+        "line": 157
+      },
+      {
+        "class": "TestVirtualBlockDevice",
+        "class_doc": "",
+        "name": "test_allocation_exhaustion",
+        "doc": "Allocating all blocks raises OSError without corrupting existing data.",
+        "line": 166
+      },
+      {
+        "class": "TestVirtualBlockDevice",
+        "class_doc": "",
+        "name": "test_disk_reopen_preserves_allocation_bitmap",
+        "doc": "Re-opening an existing disk re-loads the allocation bitmap correctly.",
+        "line": 183
+      },
+      {
+        "class": "TestVirtualBlockDevice",
+        "class_doc": "",
+        "name": "test_block_boundaries_exact_and_one_off",
+        "doc": "Validate behavior with exact block size, one byte below, and one byte above.",
+        "line": 196
+      },
+      {
+        "class": "TestVirtualBlockDevice",
+        "class_doc": "",
+        "name": "test_inject_bit_rot_only_on_allocated_block",
+        "doc": "inject_bit_rot raises ValueError for unallocated blocks.",
+        "line": 218
+      },
+      {
+        "class": "TestDeduplication",
+        "class_doc": "",
+        "name": "test_identical_files_share_physical_blocks",
+        "doc": "Two files with identical content share exact physical block IDs.",
+        "line": 240
+      },
+      {
+        "class": "TestDeduplication",
+        "class_doc": "",
+        "name": "test_reference_counts_increment_on_dedup",
+        "doc": "Deduplication increments reference counts on shared blocks.",
+        "line": 250
+      },
+      {
+        "class": "TestDeduplication",
+        "class_doc": "",
+        "name": "test_delete_one_of_two_sharing_files_leaves_other_readable",
+        "doc": "Deleting one file that shares blocks leaves the other file fully readable.",
+        "line": 259
+      },
+      {
+        "class": "TestDeduplication",
+        "class_doc": "",
+        "name": "test_reference_count_drops_to_zero_on_full_delete",
+        "doc": "After deleting all files sharing a block, its refcount reaches 0 and block is freed.",
+        "line": 270
+      },
+      {
+        "class": "TestDeduplication",
+        "class_doc": "",
+        "name": "test_partially_identical_files_only_dedup_matching_chunks",
+        "doc": "Only identical 4 KB chunks are deduplicated; different chunks allocate new blocks.",
+        "line": 280
+      },
+      {
+        "class": "TestDeduplication",
+        "class_doc": "",
+        "name": "test_empty_file_write_and_read",
+        "doc": "Empty file can be written and read back as empty bytes.",
+        "line": 295
+      },
+      {
+        "class": "TestDeduplication",
+        "class_doc": "",
+        "name": "test_exact_block_size_file",
+        "doc": "A file of exactly one block size allocates exactly one block.",
+        "line": 302
+      },
+      {
+        "class": "TestDeduplication",
+        "class_doc": "",
+        "name": "test_one_byte_below_block_boundary",
+        "doc": "File one byte short of block boundary allocates exactly one block.",
+        "line": 310
+      },
+      {
+        "class": "TestDeduplication",
+        "class_doc": "",
+        "name": "test_one_byte_above_block_boundary",
+        "doc": "File one byte over block boundary allocates exactly two blocks.",
+        "line": 318
+      },
+      {
+        "class": "TestDeduplication",
+        "class_doc": "",
+        "name": "test_multi_block_file_content_integrity",
+        "doc": "Multi-block file reads back correct content for each chunk.",
+        "line": 326
+      },
+      {
+        "class": "TestDeduplication",
+        "class_doc": "",
+        "name": "test_replace_file_clears_stale_hash_index",
+        "doc": "Overwriting a file with different content removes stale hash-to-block mappings.",
+        "line": 334
+      },
+      {
+        "class": "TestDeduplication",
+        "class_doc": "",
+        "name": "test_dedup_never_returns_block_with_wrong_hash",
+        "doc": "The dedup engine never returns a block whose actual bytes differ from expected hash.",
+        "line": 350
+      },
+      {
+        "class": "TestCopyOnWriteAndSnapshots",
+        "class_doc": "",
+        "name": "test_snapshot_preserves_original_after_file_modification",
+        "doc": "After modifying a live file, snapshot retains original exact bytes.",
+        "line": 371
+      },
+      {
+        "class": "TestCopyOnWriteAndSnapshots",
+        "class_doc": "",
+        "name": "test_snapshot_preserves_original_after_file_deletion",
+        "doc": "Deleting a live file does not destroy its data in a prior snapshot.",
+        "line": 385
+      },
+      {
+        "class": "TestCopyOnWriteAndSnapshots",
+        "class_doc": "",
+        "name": "test_snapshot_restore_returns_all_filenames",
+        "doc": "Restored snapshot reinstates all filenames that existed at snap time.",
+        "line": 396
+      },
+      {
+        "class": "TestCopyOnWriteAndSnapshots",
+        "class_doc": "",
+        "name": "test_duplicate_snapshot_name_raises",
+        "doc": "Creating a snapshot with an already-existing name raises ValueError.",
+        "line": 409
+      },
+      {
+        "class": "TestCopyOnWriteAndSnapshots",
+        "class_doc": "",
+        "name": "test_restore_nonexistent_snapshot_raises",
+        "doc": "Restoring a non-existent snapshot raises KeyError.",
+        "line": 417
+      },
+      {
+        "class": "TestCopyOnWriteAndSnapshots",
+        "class_doc": "",
+        "name": "test_snapshot_does_not_increase_physical_block_count",
+        "doc": "Creating a snapshot does not allocate additional data blocks.",
+        "line": 423
+      },
+      {
+        "class": "TestCopyOnWriteAndSnapshots",
+        "class_doc": "",
+        "name": "test_snapshot_reference_counts_are_incremented",
+        "doc": "Snapshot increments reference counts so shared blocks are not freed on file delete.",
+        "line": 432
+      },
+      {
+        "class": "TestCopyOnWriteAndSnapshots",
+        "class_doc": "",
+        "name": "test_delete_snapshot_releases_unreferenced_blocks",
+        "doc": "Deleting a snapshot releases blocks that are no longer referenced.",
+        "line": 443
+      },
+      {
+        "class": "TestCopyOnWriteAndSnapshots",
+        "class_doc": "",
+        "name": "test_repeated_restore_produces_consistent_state",
+        "doc": "Restoring the same snapshot multiple times yields identical state each time.",
+        "line": 453
+      },
+      {
+        "class": "TestHealthyBaseline",
+        "class_doc": "",
+        "name": "test_fresh_filesystem_scrub_is_healthy",
+        "doc": "A freshly written filesystem always scrubs as HEALTHY with zero corrupted blocks.",
+        "line": 471
+      },
+      {
+        "class": "TestHealthyBaseline",
+        "class_doc": "",
+        "name": "test_scrub_returns_correct_file_count",
+        "doc": "scrub_all() reports exactly the number of active files.",
+        "line": 483
+      },
+      {
+        "class": "TestHealthyBaseline",
+        "class_doc": "",
+        "name": "test_leaf_hashes_match_actual_disk_bytes_on_write",
+        "doc": "After write_file(), every stored leaf hash must match the actual bytes\nphysically on disk \u2014 pre-corruption baseline integrity check.",
+        "line": 491
+      },
+      {
+        "class": "TestHealthyBaseline",
+        "class_doc": "",
+        "name": "test_merkle_root_matches_tree_recompute",
+        "doc": "The inode's stored merkle_root matches what a freshly-built MerkleTree\ncomputes from the same blocks.",
+        "line": 507
+      },
+      {
+        "class": "TestCorruptionDetection",
+        "class_doc": "",
+        "name": "test_bit_rot_changes_disk_bytes",
+        "doc": "inject_bit_rot() verifiably changes the physical bytes on disk.",
+        "line": 532
+      },
+      {
+        "class": "TestCorruptionDetection",
+        "class_doc": "",
+        "name": "test_scrub_detects_corrupted_block_using_pre_corruption_hashes",
+        "doc": "Critical: The audit uses leaf_hashes recorded BEFORE corruption.\nIt must report exactly the corrupted block ID.",
+        "line": 542
+      },
+      {
+        "class": "TestCorruptionDetection",
+        "class_doc": "",
+        "name": "test_clean_block_not_reported_as_corrupted",
+        "doc": "A block whose bytes have not changed must not appear in corrupted list.",
+        "line": 568
+      },
+      {
+        "class": "TestCorruptionDetection",
+        "class_doc": "",
+        "name": "test_multi_block_multi_file_corruption_all_detected",
+        "doc": "Corruption in several blocks across several files is all detected.",
+        "line": 579
+      },
+      {
+        "class": "TestCorruptionDetection",
+        "class_doc": "",
+        "name": "test_shared_deduplicated_block_corruption_detected",
+        "doc": "Corruption of a deduplicated block shared by two files is detected\nfor both files in the scrub report.",
+        "line": 599
+      },
+      {
+        "class": "TestCorruptionDetection",
+        "class_doc": "",
+        "name": "test_unallocated_block_corruption_handled_safely",
+        "doc": "Injecting bit-rot on an unallocated block raises ValueError safely.",
+        "line": 618
+      },
+      {
+        "class": "TestCorruptionDetection",
+        "class_doc": "",
+        "name": "test_scrub_never_rebuilds_expected_hash_from_corrupt_bytes",
+        "doc": "The scrub comparison is always against the pre-recorded leaf_hashes\non the inode, NOT recomputed from possibly-corrupt disk bytes.\n\nVerified by: corrupting a block, then confirming the scrub reports\nDEGRADED using the stored (pre-corruption) leaf_hashes as the reference.",
+        "line": 627
+      },
+      {
+        "class": "TestTier1CacheRecovery",
+        "class_doc": "",
+        "name": "test_recovery_cache_populated_at_write_time",
+        "doc": "write_file() populates recovery_cache with the exact block bytes.",
+        "line": 659
+      },
+      {
+        "class": "TestTier1CacheRecovery",
+        "class_doc": "",
+        "name": "test_tier1_heals_exact_bytes_from_cache",
+        "doc": "After heal, the block's bytes are byte-for-byte identical to the\nknown-good original preserved in recovery_cache.",
+        "line": 666
+      },
+      {
+        "class": "TestTier1CacheRecovery",
+        "class_doc": "",
+        "name": "test_tier1_heal_passes_trusted_hash_check",
+        "doc": "Recovered block hash matches the trusted pre-corruption leaf hash.",
+        "line": 696
+      },
+      {
+        "class": "TestTier1CacheRecovery",
+        "class_doc": "",
+        "name": "test_tier1_does_not_corrupt_unrelated_blocks",
+        "doc": "Healing one block does not alter the bytes of any other block.",
+        "line": 712
+      },
+      {
+        "class": "TestTier1CacheRecovery",
+        "class_doc": "",
+        "name": "test_tier1_heal_log_records_block_source_and_hashes",
+        "doc": "HealRecord in heal_log contains block_id, source, hashes, and success.",
+        "line": 731
+      },
+      {
+        "class": "TestTier1CacheRecovery",
+        "class_doc": "",
+        "name": "test_tier1_dedup_index_consistent_after_heal",
+        "doc": "After healing, the block-to-hash mapping in the dedup engine still\nmatches the repaired bytes on disk.",
+        "line": 750
+      },
+      {
+        "class": "TestTier1CacheRecovery",
+        "class_doc": "",
+        "name": "test_tier1_post_heal_scrub_is_healthy",
+        "doc": "After successful Tier-1 heal, a new scrub reports HEALTHY.",
+        "line": 767
+      },
+      {
+        "class": "TestTier1CacheRecovery",
+        "class_doc": "",
+        "name": "test_tier1_full_file_readable_after_heal",
+        "doc": "Full file content reads back correctly after multi-block Tier-1 heal.",
+        "line": 777
+      },
+      {
+        "class": "TestTier2SnapshotRecovery",
+        "class_doc": "",
+        "name": "test_tier2_snapshot_path_is_tried_when_cache_cleared",
+        "doc": "When recovery_cache entry is explicitly removed, the code must attempt\nthe snapshot extent search path (Tier 2). This is confirmed via heal_record.",
+        "line": 818
+      },
+      {
+        "class": "TestTier2SnapshotRecovery",
+        "class_doc": "",
+        "name": "test_snapshot_remains_unchanged_after_heal",
+        "doc": "The snapshot's inode state is unaffected by the healing operation.",
+        "line": 851
+      },
+      {
+        "class": "TestTier2SnapshotRecovery",
+        "class_doc": "",
+        "name": "test_merkle_leaf_hashes_updated_only_after_successful_restore",
+        "doc": "Merkle leaf hashes are re-anchored on the inode ONLY after successful\nrecovery \u2014 not before, and not in failed cases.\nVerified by checking the post-heal leaf hash matches actual disk bytes.",
+        "line": 865
+      },
+      {
+        "class": "TestTier2SnapshotRecovery",
+        "class_doc": "",
+        "name": "test_full_scrub_healthy_after_tier2_snap_heal",
+        "doc": "End-to-end: write \u2192 snap \u2192 evict cache \u2192 corrupt \u2192 heal (Tier-2 path)\n\u2192 post-heal scrub HEALTHY.",
+        "line": 894
+      },
+      {
+        "class": "TestRecoveryFailureAndSafety",
+        "class_doc": "",
+        "name": "test_unrecoverable_block_not_reported_as_healed",
+        "doc": "A block with no valid recovery source is marked unrecoverable, not healed.",
+        "line": 922
+      },
+      {
+        "class": "TestRecoveryFailureAndSafety",
+        "class_doc": "",
+        "name": "test_unrecoverable_does_not_update_leaf_hash_to_corrupt_value",
+        "doc": "Critical safety: A failed heal must never re-anchor the inode's\nleaf_hash or merkle_root to hashes of the corrupted bytes.",
+        "line": 936
+      },
+      {
+        "class": "TestRecoveryFailureAndSafety",
+        "class_doc": "",
+        "name": "test_failed_recovery_does_not_corrupt_unrelated_files",
+        "doc": "A failed heal operation leaves unrelated files untouched.",
+        "line": 960
+      },
+      {
+        "class": "TestRecoveryFailureAndSafety",
+        "class_doc": "",
+        "name": "test_audit_log_distinguishes_healed_from_unrecoverable",
+        "doc": "Audit log entries clearly distinguish: healed (success=True) vs.\nunrecoverable (success=False, source='failed').",
+        "line": 977
+      },
+      {
+        "class": "TestRecoveryFailureAndSafety",
+        "class_doc": "",
+        "name": "test_repeated_healing_is_idempotent",
+        "doc": "Running self_heal_all() multiple times on the same state is safe and correct.",
+        "line": 1008
+      },
+      {
+        "class": "TestRecoveryFailureAndSafety",
+        "class_doc": "",
+        "name": "test_repeated_scrubbing_is_idempotent",
+        "doc": "Multiple scrub calls on a healthy filesystem always return HEALTHY.",
+        "line": 1021
+      },
+      {
+        "class": "TestRecoveryFailureAndSafety",
+        "class_doc": "",
+        "name": "test_shared_block_corruption_reported_for_both_owners",
+        "doc": "A corrupt deduplicated block shared by two files is reported as\ncorrupted in both files' scrub detail entries.",
+        "line": 1029
+      },
+      {
+        "class": "TestMerkleProofAndPostHealIntegrity",
+        "class_doc": "",
+        "name": "test_proof_for_one_block_file",
+        "doc": "Single-block file proof is valid and references the correct block.",
+        "line": 1055
+      },
+      {
+        "class": "TestMerkleProofAndPostHealIntegrity",
+        "class_doc": "",
+        "name": "test_proof_for_even_sized_multi_block_file",
+        "doc": "Even number of blocks produces valid proof for each leaf.",
+        "line": 1063
+      },
+      {
+        "class": "TestMerkleProofAndPostHealIntegrity",
+        "class_doc": "",
+        "name": "test_proof_for_odd_sized_multi_block_file",
+        "doc": "Odd number of blocks produces valid proof for each leaf (last node is duplicated).",
+        "line": 1072
+      },
+      {
+        "class": "TestMerkleProofAndPostHealIntegrity",
+        "class_doc": "",
+        "name": "test_proof_rejects_invalid_leaf_index",
+        "doc": "Out-of-range leaf index returns valid=False or raises IndexError.",
+        "line": 1081
+      },
+      {
+        "class": "TestMerkleProofAndPostHealIntegrity",
+        "class_doc": "",
+        "name": "test_proof_leaf_hash_matches_actual_block",
+        "doc": "Proof leaf_hash matches the actual SHA-256 of the block on disk.",
+        "line": 1091
+      },
+      {
+        "class": "TestMerkleProofAndPostHealIntegrity",
+        "class_doc": "",
+        "name": "test_proof_root_matches_stored_merkle_root",
+        "doc": "Proof root_hash matches the inode's stored merkle_root.",
+        "line": 1100
+      },
+      {
+        "class": "TestMerkleProofAndPostHealIntegrity",
+        "class_doc": "",
+        "name": "test_new_tree_after_heal_built_from_repaired_bytes",
+        "doc": "Post-heal MerkleTree root is computed from the repaired bytes,\nNOT from the corrupted bytes. Verified by re-building the tree\nindependently and comparing.",
+        "line": 1108
+      },
+      {
+        "class": "TestMerkleProofAndPostHealIntegrity",
+        "class_doc": "",
+        "name": "test_post_heal_scrub_is_healthy_for_recoverable_case",
+        "doc": "After successful heal, post-heal scrub is HEALTHY with zero corrupted blocks.",
+        "line": 1130
+      },
+      {
+        "class": "TestAPIEndpoints",
+        "class_doc": "",
+        "name": "test_telemetry_endpoint_structure",
+        "doc": "GET /api/telemetry returns required fields.",
+        "line": 1174
+      },
+      {
+        "class": "TestAPIEndpoints",
+        "class_doc": "",
+        "name": "test_file_create_read_delete_lifecycle",
+        "doc": "Full file lifecycle: create, read, delete via REST API.",
+        "line": 1184
+      },
+      {
+        "class": "TestAPIEndpoints",
+        "class_doc": "",
+        "name": "test_missing_file_read_returns_404",
+        "doc": "",
+        "line": 1211
+      },
+      {
+        "class": "TestAPIEndpoints",
+        "class_doc": "",
+        "name": "test_file_create_empty_filename_returns_400",
+        "doc": "",
+        "line": 1216
+      },
+      {
+        "class": "TestAPIEndpoints",
+        "class_doc": "",
+        "name": "test_snapshot_create_list_restore_delete",
+        "doc": "Snapshot lifecycle: create, list, restore, delete.",
+        "line": 1222
+      },
+      {
+        "class": "TestAPIEndpoints",
+        "class_doc": "",
+        "name": "test_snapshot_missing_name_returns_404",
+        "doc": "",
+        "line": 1244
+      },
+      {
+        "class": "TestAPIEndpoints",
+        "class_doc": "",
+        "name": "test_bitrot_inject_scrub_heal_endpoint_cycle",
+        "doc": "Full bit-rot cycle via REST: inject \u2192 scrub (DEGRADED) \u2192 heal \u2192 scrub (HEALTHY).",
+        "line": 1250
+      },
+      {
+        "class": "TestAPIEndpoints",
+        "class_doc": "",
+        "name": "test_block_inspect_returns_telemetry",
+        "doc": "GET /api/blocks/{id} returns block telemetry for valid allocated blocks.",
+        "line": 1271
+      },
+      {
+        "class": "TestAPIEndpoints",
+        "class_doc": "",
+        "name": "test_block_out_of_range_returns_400",
+        "doc": "",
+        "line": 1285
+      },
+      {
+        "class": "TestAPIEndpoints",
+        "class_doc": "",
+        "name": "test_merkle_proof_endpoint",
+        "doc": "GET /api/merkle/proof/{filename}/{block_index} returns valid proof.",
+        "line": 1290
+      },
+      {
+        "class": "TestAPIEndpoints",
+        "class_doc": "",
+        "name": "test_heal_log_endpoint",
+        "doc": "GET /api/merkle/heal_log returns a list of heal events.",
+        "line": 1301
+      },
+      {
+        "class": "TestRemoteClient",
+        "class_doc": "",
+        "name": "test_client_telemetry_has_required_fields",
+        "doc": "",
+        "line": 1315
+      },
+      {
+        "class": "TestRemoteClient",
+        "class_doc": "",
+        "name": "test_client_write_and_read_exact_bytes",
+        "doc": "",
+        "line": 1321
+      },
+      {
+        "class": "TestRemoteClient",
+        "class_doc": "",
+        "name": "test_client_deduplication_reduces_physical_blocks",
+        "doc": "",
+        "line": 1329
+      },
+      {
+        "class": "TestRemoteClient",
+        "class_doc": "",
+        "name": "test_client_missing_file_raises_file_not_found",
+        "doc": "",
+        "line": 1337
+      },
+      {
+        "class": "TestRemoteClient",
+        "class_doc": "",
+        "name": "test_client_scrub_returns_structured_report",
+        "doc": "",
+        "line": 1342
+      },
+      {
+        "class": "TestRemoteClient",
+        "class_doc": "",
+        "name": "test_client_server_failure_raises_not_hides_error",
+        "doc": "Client to a bad URL raises an exception, not a misleading success.",
+        "line": 1349
+      },
+      {
+        "class": "TestRemoteClient",
+        "class_doc": "",
+        "name": "test_client_invalid_block_id_raises_index_error",
+        "doc": "",
+        "line": 1355
+      },
+      {
+        "class": "TestPersistenceAndRestart",
+        "class_doc": "Documents the persistence guarantees (and limitations) of AeroFS.\n\nAeroFS persistence model:\n\u2500 Physical block data: PERSISTED on disk (binary container file)\n\u2500 Allocation bitmap:   PERSISTED on disk (written to block 1 after each alloc/free)\n\u2500 Superblock:          PERSISTED on disk (block 0)\n\u2500 File metadata (inodes, filenames, block_ids, leaf_hashes, merkle_root):\n                       MEMORY-ONLY \u2014 not persisted; lost on process restart\n\u2500 Dedup hash-to-block index: MEMORY-ONLY \u2014 not persisted\n\u2500 Reference counts:    MEMORY-ONLY \u2014 not persisted\n\u2500 Snapshots:           MEMORY-ONLY \u2014 not persisted\n\u2500 Recovery cache:      MEMORY-ONLY \u2014 not persisted\n\u2500 Heal log:            MEMORY-ONLY \u2014 not persisted\n\nTests below verify what IS persisted and explicitly mark what is NOT.",
+        "name": "test_block_data_persists_across_reopen",
+        "doc": "Physical block bytes are present after closing and reopening the disk.",
+        "line": 1384
+      },
+      {
+        "class": "TestPersistenceAndRestart",
+        "class_doc": "Documents the persistence guarantees (and limitations) of AeroFS.\n\nAeroFS persistence model:\n\u2500 Physical block data: PERSISTED on disk (binary container file)\n\u2500 Allocation bitmap:   PERSISTED on disk (written to block 1 after each alloc/free)\n\u2500 Superblock:          PERSISTED on disk (block 0)\n\u2500 File metadata (inodes, filenames, block_ids, leaf_hashes, merkle_root):\n                       MEMORY-ONLY \u2014 not persisted; lost on process restart\n\u2500 Dedup hash-to-block index: MEMORY-ONLY \u2014 not persisted\n\u2500 Reference counts:    MEMORY-ONLY \u2014 not persisted\n\u2500 Snapshots:           MEMORY-ONLY \u2014 not persisted\n\u2500 Recovery cache:      MEMORY-ONLY \u2014 not persisted\n\u2500 Heal log:            MEMORY-ONLY \u2014 not persisted\n\nTests below verify what IS persisted and explicitly mark what is NOT.",
+        "name": "test_allocation_bitmap_persists_across_reopen",
+        "doc": "Allocation bitmap survives disk close/reopen without re-formatting.",
+        "line": 1398
+      },
+      {
+        "class": "TestPersistenceAndRestart",
+        "class_doc": "Documents the persistence guarantees (and limitations) of AeroFS.\n\nAeroFS persistence model:\n\u2500 Physical block data: PERSISTED on disk (binary container file)\n\u2500 Allocation bitmap:   PERSISTED on disk (written to block 1 after each alloc/free)\n\u2500 Superblock:          PERSISTED on disk (block 0)\n\u2500 File metadata (inodes, filenames, block_ids, leaf_hashes, merkle_root):\n                       MEMORY-ONLY \u2014 not persisted; lost on process restart\n\u2500 Dedup hash-to-block index: MEMORY-ONLY \u2014 not persisted\n\u2500 Reference counts:    MEMORY-ONLY \u2014 not persisted\n\u2500 Snapshots:           MEMORY-ONLY \u2014 not persisted\n\u2500 Recovery cache:      MEMORY-ONLY \u2014 not persisted\n\u2500 Heal log:            MEMORY-ONLY \u2014 not persisted\n\nTests below verify what IS persisted and explicitly mark what is NOT.",
+        "name": "test_inode_metadata_is_NOT_persisted_without_journal",
+        "doc": "Without journal sidecar (enable_journal=False), the raw binary container\ndoes not store inode tables, documenting the raw disk limitation.",
+        "line": 1408
+      },
+      {
+        "class": "TestPersistenceAndRestart",
+        "class_doc": "Documents the persistence guarantees (and limitations) of AeroFS.\n\nAeroFS persistence model:\n\u2500 Physical block data: PERSISTED on disk (binary container file)\n\u2500 Allocation bitmap:   PERSISTED on disk (written to block 1 after each alloc/free)\n\u2500 Superblock:          PERSISTED on disk (block 0)\n\u2500 File metadata (inodes, filenames, block_ids, leaf_hashes, merkle_root):\n                       MEMORY-ONLY \u2014 not persisted; lost on process restart\n\u2500 Dedup hash-to-block index: MEMORY-ONLY \u2014 not persisted\n\u2500 Reference counts:    MEMORY-ONLY \u2014 not persisted\n\u2500 Snapshots:           MEMORY-ONLY \u2014 not persisted\n\u2500 Recovery cache:      MEMORY-ONLY \u2014 not persisted\n\u2500 Heal log:            MEMORY-ONLY \u2014 not persisted\n\nTests below verify what IS persisted and explicitly mark what is NOT.",
+        "name": "test_dedup_index_is_NOT_persisted_without_journal",
+        "doc": "Without journal sidecar, the CAS hash-to-block index is memory-only.",
+        "line": 1424
+      },
+      {
+        "class": "TestPersistenceAndRestart",
+        "class_doc": "Documents the persistence guarantees (and limitations) of AeroFS.\n\nAeroFS persistence model:\n\u2500 Physical block data: PERSISTED on disk (binary container file)\n\u2500 Allocation bitmap:   PERSISTED on disk (written to block 1 after each alloc/free)\n\u2500 Superblock:          PERSISTED on disk (block 0)\n\u2500 File metadata (inodes, filenames, block_ids, leaf_hashes, merkle_root):\n                       MEMORY-ONLY \u2014 not persisted; lost on process restart\n\u2500 Dedup hash-to-block index: MEMORY-ONLY \u2014 not persisted\n\u2500 Reference counts:    MEMORY-ONLY \u2014 not persisted\n\u2500 Snapshots:           MEMORY-ONLY \u2014 not persisted\n\u2500 Recovery cache:      MEMORY-ONLY \u2014 not persisted\n\u2500 Heal log:            MEMORY-ONLY \u2014 not persisted\n\nTests below verify what IS persisted and explicitly mark what is NOT.",
+        "name": "test_snapshots_are_NOT_persisted_without_journal",
+        "doc": "Without journal sidecar, snapshots are lost on restart.",
+        "line": 1437
+      },
+      {
+        "class": "TestPersistenceAndRestart",
+        "class_doc": "Documents the persistence guarantees (and limitations) of AeroFS.\n\nAeroFS persistence model:\n\u2500 Physical block data: PERSISTED on disk (binary container file)\n\u2500 Allocation bitmap:   PERSISTED on disk (written to block 1 after each alloc/free)\n\u2500 Superblock:          PERSISTED on disk (block 0)\n\u2500 File metadata (inodes, filenames, block_ids, leaf_hashes, merkle_root):\n                       MEMORY-ONLY \u2014 not persisted; lost on process restart\n\u2500 Dedup hash-to-block index: MEMORY-ONLY \u2014 not persisted\n\u2500 Reference counts:    MEMORY-ONLY \u2014 not persisted\n\u2500 Snapshots:           MEMORY-ONLY \u2014 not persisted\n\u2500 Recovery cache:      MEMORY-ONLY \u2014 not persisted\n\u2500 Heal log:            MEMORY-ONLY \u2014 not persisted\n\nTests below verify what IS persisted and explicitly mark what is NOT.",
+        "name": "test_metadata_and_inodes_persist_with_journal",
+        "doc": "Risk 2 & 3 fix: MetadataJournal restores all inodes, block maps, and Merkle\nroots when journal is enabled across restart.",
+        "line": 1449
+      },
+      {
+        "class": "TestPersistenceAndRestart",
+        "class_doc": "Documents the persistence guarantees (and limitations) of AeroFS.\n\nAeroFS persistence model:\n\u2500 Physical block data: PERSISTED on disk (binary container file)\n\u2500 Allocation bitmap:   PERSISTED on disk (written to block 1 after each alloc/free)\n\u2500 Superblock:          PERSISTED on disk (block 0)\n\u2500 File metadata (inodes, filenames, block_ids, leaf_hashes, merkle_root):\n                       MEMORY-ONLY \u2014 not persisted; lost on process restart\n\u2500 Dedup hash-to-block index: MEMORY-ONLY \u2014 not persisted\n\u2500 Reference counts:    MEMORY-ONLY \u2014 not persisted\n\u2500 Snapshots:           MEMORY-ONLY \u2014 not persisted\n\u2500 Recovery cache:      MEMORY-ONLY \u2014 not persisted\n\u2500 Heal log:            MEMORY-ONLY \u2014 not persisted\n\nTests below verify what IS persisted and explicitly mark what is NOT.",
+        "name": "test_dedup_and_snapshots_persist_with_journal",
+        "doc": "Risk 2 & 3 fix: CAS deduplication and snapshots persist across restart.",
+        "line": 1466
+      },
+      {
+        "class": "TestPersistenceAndRestart",
+        "class_doc": "Documents the persistence guarantees (and limitations) of AeroFS.\n\nAeroFS persistence model:\n\u2500 Physical block data: PERSISTED on disk (binary container file)\n\u2500 Allocation bitmap:   PERSISTED on disk (written to block 1 after each alloc/free)\n\u2500 Superblock:          PERSISTED on disk (block 0)\n\u2500 File metadata (inodes, filenames, block_ids, leaf_hashes, merkle_root):\n                       MEMORY-ONLY \u2014 not persisted; lost on process restart\n\u2500 Dedup hash-to-block index: MEMORY-ONLY \u2014 not persisted\n\u2500 Reference counts:    MEMORY-ONLY \u2014 not persisted\n\u2500 Snapshots:           MEMORY-ONLY \u2014 not persisted\n\u2500 Recovery cache:      MEMORY-ONLY \u2014 not persisted\n\u2500 Heal log:            MEMORY-ONLY \u2014 not persisted\n\nTests below verify what IS persisted and explicitly mark what is NOT.",
+        "name": "test_recovery_cache_and_extent_store_persist_with_journal",
+        "doc": "Risk 1, 2, 3 fix: Recovery cache and snapshot extent store survive restart,\nallowing Tier-1 and Tier-2 self-healing after process restart.",
+        "line": 1481
+      },
+      {
+        "class": "TestBenchmarkMeasurements",
+        "class_doc": "Runs the actual benchmark workloads and reports real measurements.\nClearly labels which values are MEASURED vs. SIMULATED.",
+        "name": "test_benchmark_workload_1_dedup_real_measurement",
+        "doc": "MEASURED: 10 identical 64 KB files.\nReports actual physical vs logical bytes with no hard-coded values.",
+        "line": 1515
+      },
+      {
+        "class": "TestBenchmarkMeasurements",
+        "class_doc": "Runs the actual benchmark workloads and reports real measurements.\nClearly labels which values are MEASURED vs. SIMULATED.",
+        "name": "test_benchmark_workload_3_snapshot_latency_real_measurement",
+        "doc": "MEASURED: AeroFS O(1) snapshot latency.\nSIMULATED baseline of 125.4 ms is clearly labelled as NOT a real measurement.\nAsserts only on the measured value (must be < 50 ms on any machine).",
+        "line": 1543
+      },
+      {
+        "class": "TestBenchmarkMeasurements",
+        "class_doc": "Runs the actual benchmark workloads and reports real measurements.\nClearly labels which values are MEASURED vs. SIMULATED.",
+        "name": "test_benchmark_charts_generated_successfully",
+        "doc": "The benchmark script generates charts without error.\nChart files are created in benchmark_output/.",
+        "line": 1581
+      }
+    ]
+  },
+  "tests/test_crash_recovery.py": {
+    "file_doc": "Comprehensive Crash Resilience & Metadata Recovery Test Suite for AeroFS\n========================================================================\nValidates filesystem durability under simulated crashes, power failures,\ntorn writes, and unhandled process terminations.",
+    "tests": [
+      {
+        "class": null,
+        "name": "test_crash_clean_restart_recovery",
+        "doc": "Scenario 1: Normal crash / sudden process exit between operations.\nVerifies that all committed state (inodes, CAS dedup tables, snapshots,\nblock mappings, and Merkle roots) survives process termination and is\nfaithfully reconstructed on mount.",
+        "line": 39
+      },
+      {
+        "class": null,
+        "name": "test_crash_mid_journal_write_atomic_rename",
+        "doc": "Scenario 2: Crash occurs MID-WRITE while saving metadata.\nMetadataJournal writes to a temporary file (.tmp) first and uses atomic\nPOSIX os.replace() to commit. If a crash leaves a half-written or corrupted\n.tmp file, the primary journal remains intact and uncorrupted.",
+        "line": 90
+      },
+      {
+        "class": null,
+        "name": "test_crash_corrupted_journal_graceful_fallback",
+        "doc": "Scenario 3: Physical media sector corruption damages the journal itself.\nIf the journal JSON file is corrupted or unreadable, AeroFS must not crash\nwith an unhandled exception. It should log a warning and fall back safely.",
+        "line": 115
+      },
+      {
+        "class": null,
+        "name": "test_crash_recovery_cache_tier1_heals_after_restart",
+        "doc": "Scenario 4: Recovery cache persistence across crashes.\nA block written in process 1 is corrupted AFTER process 2 mounts the disk.\nProcess 2 must be able to restore the block using the persisted Tier-1\nrecovery cache saved by Process 1.",
+        "line": 138
+      },
+      {
+        "class": null,
+        "name": "test_crash_extent_store_tier2_heals_after_restart",
+        "doc": "Scenario 5: Snapshot extent store persistence across crashes.\nA snapshot taken in process 1 is persisted. After process 2 mounts,\nthe live block is corrupted and recovery cache is evicted.\nProcess 2 must successfully heal from the historical snapshot extent store.",
+        "line": 167
+      },
+      {
+        "class": null,
+        "name": "test_crash_copy_on_write_atomicity_preserves_old_version",
+        "doc": "Scenario 6: Copy-on-Write write atomicity.\nWhen a file is modified, CoW allocates new blocks. The old block is never\noverwritten in-place. If a crash occurs before the file's inode pointer\nis updated, the historical snapshot still points to the uncorrupted old block.",
+        "line": 201
+      }
+    ]
+  },
+  "tests/test_risk_mitigations.py": {
+    "file_doc": "Tests for AeroFS Remaining Risk Mitigations (Risks 1 to 8)\n==========================================================\nVerifies that all 8 architectural enhancements and edge-case mitigations\nidentified in the AeroFS Validation Report are functional, robust, and tested.",
+    "tests": [
+      {
+        "class": null,
+        "name": "test_risk1_tier2_independent_snapshot_extent_store",
+        "doc": "Risk 1 Mitigation:\nSnapshot extent store captures an independent byte copy at snapshot time.\nWhen live physical block is corrupted and recovery_cache is cleared, Tier-2\nheals the block from the snapshot extent store rather than failing on\nthe corrupted live block.",
+        "line": 43
+      },
+      {
+        "class": null,
+        "name": "test_risk2_and_3_metadata_and_cache_persistence",
+        "doc": "Risks 2 & 3 Mitigation:\nMetadataJournal persists file inodes, CAS dedup tables, snapshots,\nsnapshot extent stores, and recovery cache.",
+        "line": 89
+      },
+      {
+        "class": null,
+        "name": "test_risk4_measured_os_baseline_benchmark",
+        "doc": "Risk 4 Mitigation:\nbenchmark.py uses a measured file copy against the OS filesystem instead of\na fixed hardcoded simulated constant.",
+        "line": 131
+      },
+      {
+        "class": null,
+        "name": "test_risk5_bit_rot_random_positions",
+        "doc": "Risk 5 Mitigation:\ninject_bit_rot() flips bytes randomly across the entire 4 KB block\ninstead of only touching the first 16 bytes.",
+        "line": 148
+      },
+      {
+        "class": null,
+        "name": "test_risk6_server_test_reset_endpoint",
+        "doc": "Risk 6 Mitigation:\nFastAPI app provides /api/test/reset and /api/format with clean state\nre-initialization.",
+        "line": 174
+      },
+      {
+        "class": null,
+        "name": "test_risk7_operation_timeouts",
+        "doc": "Risk 7 Mitigation:\nwrite_file_with_timeout() and scrub_with_timeout() enforce wall-clock limits\nto guard against runaway checks or hanging virtual storage devices.",
+        "line": 202
+      },
+      {
+        "class": null,
+        "name": "test_risk8_merkle_tree_caching",
+        "doc": "Risk 8 Mitigation:\nget_cached_merkle_tree() caches the computed MerkleTree structure by root hash,\navoiding redundant disk reads on repeated inspect or proof queries.\nCache is updated with new tree on write and evicted on file deletion.",
+        "line": 227
+      }
+    ]
+  },
+  "tests/test_self_healing.py": {
+    "file_doc": "Verified Self-Healing Test Suite for AeroFS\n============================================\nTests the strengthened Merkle scrubbing and autonomous self-healing engine.\n\nCoverage:\n  1. scrub_all_files() \u2014 aggregated report structure\n  2. Merkle inclusion proof generation (generate_proof)\n  3. HealRecord dataclass and audit trail (heal_log)\n  4. Tier-1 recovery from in-memory recovery_cache\n  5. Tier-2 recovery from historical snapshot extents\n  6. Multi-block corruption across multiple files\n  7. Merkle root re-anchoring after heal\n  8. Unrecoverable block reporting\n  9. Post-heal Merkle scrub confirms HEALTHY status\n 10. get_merkle_proof() exposed on AeroFileSystem",
+    "tests": [
+      {
+        "class": null,
+        "name": "test_scrub_all_files_returns_correct_structure",
+        "doc": "scrub_all_files() via scrub_all() returns a well-formed report dict.",
+        "line": 47
+      },
+      {
+        "class": null,
+        "name": "test_merkle_proof_generation_single_block",
+        "doc": "generate_proof() returns a valid path for a single-block file.",
+        "line": 70
+      },
+      {
+        "class": null,
+        "name": "test_merkle_proof_generation_multi_block",
+        "doc": "generate_proof() returns a non-empty sibling path for multi-block files.",
+        "line": 86
+      },
+      {
+        "class": null,
+        "name": "test_merkle_proof_invalid_index",
+        "doc": "generate_proof() returns valid=False for out-of-range indices.",
+        "line": 105
+      },
+      {
+        "class": null,
+        "name": "test_get_merkle_proof_on_filesystem",
+        "doc": "AeroFileSystem.get_merkle_proof() exposes proof API correctly.",
+        "line": 115
+      },
+      {
+        "class": null,
+        "name": "test_heal_log_is_empty_before_any_heal",
+        "doc": "No heal records exist before any healing operation.",
+        "line": 134
+      },
+      {
+        "class": null,
+        "name": "test_heal_log_records_one_entry_per_healed_block",
+        "doc": "heal_log accumulates exactly one HealRecord per corrupted block healed.",
+        "line": 141
+      },
+      {
+        "class": null,
+        "name": "test_heal_log_accumulates_across_multiple_heals",
+        "doc": "heal_log persists entries across successive self_heal_all() calls.",
+        "line": 163
+      },
+      {
+        "class": null,
+        "name": "test_tier1_cache_heals_corrupted_block",
+        "doc": "Single corrupted block is repaired from in-memory recovery cache.",
+        "line": 183
+      },
+      {
+        "class": null,
+        "name": "test_tier2_snapshot_path_exercised_when_cache_cleared",
+        "doc": "When recovery_cache is cleared, self-healing falls back to the snapshot\nextent search path. Reports the result (healed or unrecoverable) correctly.",
+        "line": 211
+      },
+      {
+        "class": null,
+        "name": "test_multi_file_multi_block_heal",
+        "doc": "Self-healing correctly repairs corruption spanning multiple files.",
+        "line": 241
+      },
+      {
+        "class": null,
+        "name": "test_merkle_root_re_anchored_after_heal",
+        "doc": "After self-healing, the inode's merkle_root and leaf_hashes are updated\nto reflect the clean repaired blocks, so subsequent scrubs pass cleanly.",
+        "line": 271
+      },
+      {
+        "class": null,
+        "name": "test_unrecoverable_block_reported_correctly",
+        "doc": "A block with no cache entry and no matching snapshot data is reported\nas unrecoverable, not silently ignored.",
+        "line": 306
+      },
+      {
+        "class": null,
+        "name": "test_post_heal_scrub_reflects_true_state",
+        "doc": "heal_all()'s built-in post-heal scrub always reflects true disk state.",
+        "line": 336
+      },
+      {
+        "class": null,
+        "name": "test_scrub_reports_orphan_device_corrupted_blocks",
+        "doc": "Blocks flagged in dev.corrupted_blocks that are not owned by any active\ninode are still captured in the scrub report as a 'Physical Storage Layer'\norphan entry.",
+        "line": 357
+      }
+    ]
+  },
+  "tests/test_unrecoverable_safety.py": {
+    "file_doc": "test_unrecoverable_safety.py\n============================\n\nAutomated tests that prove AeroFS refuses to return corrupted data to user-space\nwhen BOTH recovery sources (Tier-1 recovery cache and Tier-2 snapshots) are\nmissing or corrupted.\n\nThe tests confirm three precise behaviours:\n\n  1. self_heal_all() reports DEGRADED status + block listed in unrecoverable_blocks\n     when both tiers fail.\n  2. read_file(filename) raises IntegrityError (subclass of IOError/EIO) instead of\n     silently returning the corrupt bytes \u2014 this is the critical safety guarantee.\n  3. read_file(filename, verify_integrity=False) returns raw bytes without raising,\n     enabling forensic inspection without corrupting the guarantee for normal callers.\n\nNo third recovery source is added. The goal is safe failure, not hiding it.",
+    "tests": [
+      {
+        "class": "TestSelfHealReportsDegradedStatus",
+        "class_doc": "",
+        "name": "test_heal_reports_unrecoverable_block_when_cache_and_snapshots_both_missing",
+        "doc": "Baseline: no cache, no snapshots \u2192 heal must report the block as unrecoverable\nand post_heal_status must be DEGRADED.",
+        "line": 48
+      },
+      {
+        "class": "TestSelfHealReportsDegradedStatus",
+        "class_doc": "",
+        "name": "test_heal_reports_unrecoverable_when_snapshot_extent_store_also_missing",
+        "doc": "Tier-2 snapshot extent store entries are also removed before corruption.\nEnsure heal still reports DEGRADED and does not hallucinate a recovery.",
+        "line": 92
+      },
+      {
+        "class": "TestSelfHealReportsDegradedStatus",
+        "class_doc": "",
+        "name": "test_leaf_hash_not_overwritten_with_corrupt_value_on_failed_heal",
+        "doc": "A failed heal MUST NOT update inode.leaf_hashes with the corrupt digest.\nDoing so would cause future scrubs to report HEALTHY for a damaged file \u2014\na catastrophic silent data corruption.",
+        "line": 116
+      },
+      {
+        "class": "TestReadFileRaisesIntegrityErrorWhenUnrecoverable",
+        "class_doc": "",
+        "name": "test_read_raises_integrity_error_when_both_tiers_fail",
+        "doc": "THE CORE SAFETY TEST.\n\nAfter bit-rot with both cache and snapshots absent, calling read_file()\nmust raise IntegrityError (subclass of IOError) \u2014 not silently return\nthe corrupted bytes.",
+        "line": 151
+      },
+      {
+        "class": "TestReadFileRaisesIntegrityErrorWhenUnrecoverable",
+        "class_doc": "",
+        "name": "test_read_raises_integrity_error_is_subclass_of_ioerror",
+        "doc": "IntegrityError must be catchable as IOError so POSIX-aware callers\nreceive the standard errno=EIO signal.",
+        "line": 179
+      },
+      {
+        "class": "TestReadFileRaisesIntegrityErrorWhenUnrecoverable",
+        "class_doc": "",
+        "name": "test_read_raises_only_for_corrupt_block_not_clean_file",
+        "doc": "IntegrityError must be raised ONLY for the file whose block is corrupt.\nA second, clean file must still be readable without error.",
+        "line": 194
+      },
+      {
+        "class": "TestReadFileRaisesIntegrityErrorWhenUnrecoverable",
+        "class_doc": "",
+        "name": "test_read_heals_and_succeeds_when_cache_available",
+        "doc": "When Tier-1 (cache) is available, read_file() must silently self-heal\non-demand and return the correct data \u2014 no exception raised.",
+        "line": 215
+      },
+      {
+        "class": "TestReadFileRaisesIntegrityErrorWhenUnrecoverable",
+        "class_doc": "",
+        "name": "test_read_heals_and_succeeds_when_snapshot_available",
+        "doc": "When Tier-2 (snapshot extent store) is available and cache is absent,\nread_file() must silently self-heal and return the correct data.",
+        "line": 235
+      },
+      {
+        "class": "TestReadFileRaisesIntegrityErrorWhenUnrecoverable",
+        "class_doc": "",
+        "name": "test_read_raises_when_all_snapshot_extents_are_wiped",
+        "doc": "Snapshot exists but its extent store has been wiped (simulating snapshot\nstore loss). Both tiers fail \u2192 IntegrityError must be raised.",
+        "line": 257
+      },
+      {
+        "class": "TestReadFileForensicMode",
+        "class_doc": "",
+        "name": "test_forensic_mode_returns_raw_corrupt_bytes_without_raising",
+        "doc": "read_file(filename, verify_integrity=False) must return raw bytes even\nwhen the block is corrupt \u2014 no integrity check, no exception.\nThis is an opt-in forensic / debug escape-hatch.",
+        "line": 282
+      },
+      {
+        "class": "TestReadFileForensicMode",
+        "class_doc": "",
+        "name": "test_default_mode_still_raises_for_same_file",
+        "doc": "Confirm the contrast: same scenario, default verify_integrity=True raises,\nwhile verify_integrity=False does not.",
+        "line": 303
+      },
+      {
+        "class": "TestAPIReturns500ForUnrecoverableRead",
+        "class_doc": "",
+        "name": "test_api_read_returns_500_when_both_tiers_fail",
+        "doc": "The REST endpoint GET /api/files/read/{filename} must return HTTP 500\nwith an informative error message when read_file raises IntegrityError.",
+        "line": 331
+      },
+      {
+        "class": "TestCanonicalEndToEndScenario",
+        "class_doc": "Single-file, step-by-step demonstration of the core safety guarantee.\nMirrors precisely the scenario the OS project specification calls for.",
+        "name": "test_step_by_step_both_tiers_missing_raises_integrity_error",
+        "doc": "CANONICAL SAFETY TEST \u2014 verbatim 4-step scenario.\n\nStep 1: Write a file \u2192 record SHA-256 of original bytes.\nStep 2: Corrupt one physical block.\nStep 3: Remove both recovery sources (cache + all snapshot extents).\nStep 4: Attempt to read the file.\nAssert: IntegrityError is raised \u2014 corrupted bytes are never returned.",
+        "line": 391
+      },
+      {
+        "class": "TestCanonicalEndToEndScenario",
+        "class_doc": "Single-file, step-by-step demonstration of the core safety guarantee.\nMirrors precisely the scenario the OS project specification calls for.",
+        "name": "test_step_by_step_tier1_available_restores_original_bytes",
+        "doc": "Same 4-step setup, but recovery cache is LEFT INTACT.\nread_file must silently self-heal and return the original bytes.\nSHA-256 of the returned data must match the original hash.",
+        "line": 457
+      },
+      {
+        "class": "TestCanonicalEndToEndScenario",
+        "class_doc": "Single-file, step-by-step demonstration of the core safety guarantee.\nMirrors precisely the scenario the OS project specification calls for.",
+        "name": "test_step_by_step_tier2_snapshot_available_restores_original_bytes",
+        "doc": "Same setup, cache is wiped but a snapshot with a clean extent store exists.\nread_file must silently self-heal via Tier-2 and return the original bytes.\nSHA-256 of the returned data must match the original hash.",
+        "line": 490
+      },
+      {
+        "class": "TestCanonicalEndToEndScenario",
+        "class_doc": "Single-file, step-by-step demonstration of the core safety guarantee.\nMirrors precisely the scenario the OS project specification calls for.",
+        "name": "test_api_reports_500_not_200_with_corrupt_bytes",
+        "doc": "Step-by-step scenario via the REST API.\nWhen both tiers fail the server must return HTTP 500 \u2014 not HTTP 200\nwith the corrupt payload silently embedded in the JSON response.",
+        "line": 531
+      }
+    ]
+  }
+}

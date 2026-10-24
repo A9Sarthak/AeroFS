@@ -70,6 +70,31 @@ export interface SnapshotView {
   file_blocks?: Record<string, number[]>
 }
 
+export interface StorageSavingsBreakdown {
+  total_logical_bytes: number
+  total_logical_blocks: number
+  total_physical_bytes: number
+  total_physical_blocks: number
+  total_saved_bytes: number
+  total_saved_blocks: number
+  savings_ratio: string
+  savings_percent: number
+  cas: {
+    saved_bytes: number
+    saved_blocks: number
+    dedup_hits: number
+    shared_blocks_count: number
+  }
+  cow: {
+    saved_bytes: number
+    saved_blocks: number
+    snapshot_count: number
+    snapshot_logical_bytes: number
+    snapshot_logical_blocks: number
+    snapshot_extra_physical_blocks: number
+  }
+}
+
 export interface TelemetryResponse {
   disk: DiskView
   dedup: DeduplicationStats
@@ -78,6 +103,11 @@ export interface TelemetryResponse {
   grid_blocks: number[]   // 0=free,1=meta,2=unique,3=shared,4=corrupted
   files: FileView[]
   snapshots: SnapshotView[]
+  savings?: StorageSavingsBreakdown
+  auto_heal_daemon?: {
+    active: boolean
+    heal_log_count: number
+  }
 }
 
 export interface HealthResponse {
@@ -247,6 +277,14 @@ export type LiveHealResponse =
   | LiveHealCorruptResponse
   | LiveHealRepairResponse
 
+export interface BlockFileChunk {
+  file_name: string
+  chunk_index: number
+  chunk_part: number
+  total_chunks: number
+  file_size: number
+}
+
 export interface BlockDetails {
   block_id: number
   is_allocated: boolean
@@ -258,6 +296,14 @@ export interface BlockDetails {
   hash_matches: boolean
   referencing_files: string[]
   referencing_snapshots: string[]
+  file_chunks?: BlockFileChunk[]
+  sharing_status?: 'shared' | 'unique' | 'snapshot_shared' | 'snapshot_only' | 'metadata' | 'free'
+  sharing_label?: string
+  sharing_explanation?: string
+  data_text?: string
+  hex_dump?: string
+  is_printable?: boolean
+  bytes_length?: number
 }
 
 export interface InspectFileResponse {

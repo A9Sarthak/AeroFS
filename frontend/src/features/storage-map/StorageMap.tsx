@@ -23,6 +23,10 @@ import HardDrive3D, {
 } from './HardDrive3D'
 import LogicalFiles3D from './LogicalFiles3D'
 import HardDriveLinks from './HardDriveLinks'
+import SpaceSavingsHUD from './SpaceSavingsHUD'
+import SpaceSavingsModal from './SpaceSavingsModal'
+import BlockDataViewer from './BlockDataViewer'
+import { computeStorageSavings, formatBytes } from './savingsUtils'
 
 const CUBE_OFFSET_X = -15
 const BOX_SIZE = 0.95
@@ -986,6 +990,10 @@ export default function StorageMap() {
   const [cameraResetCounter, setCameraResetCounter] = useState(0)
   const [webglError, setWebglError] = useState(false)
   const [show75Modal, setShow75Modal] = useState(false)
+  const [showSavingsModal, setShowSavingsModal] = useState(false)
+
+  // Computed space savings metrics (CAS + CoW + Snapshots)
+  const savings = useMemo(() => computeStorageSavings(telemetry), [telemetry])
 
   // View modes: 'dedup' (Files -> Hard Drive), 'matrix' (3D Cube -> Hard Drive), 'drive' (Hard Drive Only)
   const [viewMode, setViewMode] = useState<'dedup' | 'matrix' | 'drive'>('dedup')
@@ -1058,10 +1066,52 @@ export default function StorageMap() {
         {/* Title and stats */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           <div>
-            <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span>💽</span> Filesystem to Hard Drive Mapping (CAS Deduplication)
-            </h2>
-            <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>💽</span> Filesystem to Hard Drive Mapping (CAS Deduplication)
+              </h2>
+
+              {/* Space Savings Interactive Pill */}
+              <div
+                onClick={() => setShowSavingsModal(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '3px 10px',
+                  borderRadius: '20px',
+                  background:
+                    theme === 'light'
+                      ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.14) 0%, rgba(124, 58, 237, 0.14) 100%)'
+                      : 'linear-gradient(135deg, rgba(16, 185, 129, 0.22) 0%, rgba(168, 85, 247, 0.25) 100%)',
+                  border:
+                    theme === 'light'
+                      ? '1px solid rgba(16, 185, 129, 0.45)'
+                      : '1px solid rgba(16, 185, 129, 0.55)',
+                  cursor: 'pointer',
+                  boxShadow: '0 0 12px rgba(16, 185, 129, 0.25)',
+                  transition: 'all 0.15s ease',
+                }}
+                title="Click to view comprehensive Space Savings & Viva Analysis"
+              >
+                <span style={{ fontSize: '0.82rem' }}>⚡</span>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: theme === 'light' ? '#065f46' : '#34d399' }}>
+                  Space Saved: +{formatBytes(savings.total_saved_bytes)} ({savings.savings_percent}% · {savings.savings_ratio})
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.66rem',
+                    color: theme === 'light' ? '#7c3aed' : '#c084fc',
+                    fontWeight: 700,
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Breakdown ➔
+                </span>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '0.74rem', color: '#94a3b8', marginTop: 2 }}>
               Logical Files ➔ Enterprise Hard Drive (4,096 Vertical Physical Blocks · 64×64)
               <span style={{ marginLeft: 8, color: '#38bdf8', fontWeight: 600 }}>
                 · 🧩 Best-Fit Allocation ({telemetry?.disk.fragmentation_percent ?? 0}% external frag)
@@ -1069,6 +1119,11 @@ export default function StorageMap() {
               {sharedBlockCount > 0 && (
                 <span style={{ marginLeft: 8, color: '#c084fc', fontWeight: 600 }}>
                   · {sharedBlockCount} CAS Shared Blocks
+                </span>
+              )}
+              {savings.cow.saved_blocks > 0 && (
+                <span style={{ marginLeft: 8, color: '#fbbf24', fontWeight: 600 }}>
+                  · {savings.cow.saved_blocks} CoW Snapshot Blocks
                 </span>
               )}
             </div>
@@ -1150,6 +1205,29 @@ export default function StorageMap() {
 
         {/* View Mode & Link Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+          {/* Space Savings Breakdown Button */}
+          <button
+            onClick={() => setShowSavingsModal(true)}
+            style={{
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.22) 0%, rgba(124, 58, 237, 0.22) 100%)',
+              border: '1px solid rgba(16, 185, 129, 0.55)',
+              color: theme === 'light' ? '#047857' : '#34d399',
+              padding: '4px 11px',
+              borderRadius: '6px',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              boxShadow: '0 0 10px rgba(16, 185, 129, 0.25)',
+              transition: 'all 0.15s ease',
+            }}
+            title="Open Space Savings & Efficiency Analysis"
+          >
+            <span>⚡</span> Space Saved: {savings.savings_percent}%
+          </button>
+
           {/* 75% Partial Dedup Viva Demo Button */}
           <button
             onClick={() => setShow75Modal(true)}
@@ -1345,6 +1423,75 @@ export default function StorageMap() {
       >
         {use2DFallback || webglError ? (
           <div style={{ padding: '1.5rem', height: '100%', overflowY: 'auto' }}>
+            {/* Space Savings Summary Bar in 2D Mode */}
+            <div
+              style={{
+                marginBottom: '1rem',
+                padding: '0.85rem 1rem',
+                borderRadius: '8px',
+                background:
+                  theme === 'light'
+                    ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(124, 58, 237, 0.08) 100%)'
+                    : 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%)',
+                border:
+                  theme === 'light'
+                    ? '1px solid rgba(16, 185, 129, 0.3)'
+                    : '1px solid rgba(16, 185, 129, 0.4)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span style={{ fontSize: '1.25rem' }}>⚡</span>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '0.92rem', color: theme === 'light' ? '#065f46' : '#34d399' }}>
+                    AeroFS Storage Reclaimed: +{formatBytes(savings.total_saved_bytes)} ({savings.total_saved_blocks} blocks · {savings.savings_percent}% reduction)
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: theme === 'light' ? '#475569' : '#94a3b8' }}>
+                    CAS Deduplication: +{formatBytes(savings.cas.saved_bytes)} ({savings.cas.saved_blocks} blocks) · CoW Snapshots: +{formatBytes(savings.cow.saved_bytes)} ({savings.cow.saved_blocks} blocks)
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowSavingsModal(true)}
+                  style={{
+                    background: '#0284c7',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '4px 10px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  📊 Full Analysis
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShow75Modal(true)}
+                  style={{
+                    background: theme === 'light' ? 'rgba(124, 58, 237, 0.12)' : 'rgba(168, 85, 247, 0.2)',
+                    color: theme === 'light' ? '#6b21a8' : '#c084fc',
+                    border: '1px solid rgba(168, 85, 247, 0.4)',
+                    borderRadius: '4px',
+                    padding: '4px 10px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  🎨 75% Demo
+                </button>
+              </div>
+            </div>
+
             <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                 Displaying 2D Flat Matrix (4,096 blocks): Click any block to inspect details
@@ -1520,12 +1667,12 @@ export default function StorageMap() {
               </div>
             )}
 
-            {/* Hover Tooltip Overlay (Top-Left) */}
+            {/* Hover Tooltip Overlay (Above Color Legend) */}
             {hoveredId !== null && hoveredState && (
               <div
                 style={{
                   position: 'absolute',
-                  top: 16,
+                  bottom: 64,
                   left: 16,
                   background: 'var(--bg-card)',
                   backdropFilter: 'blur(10px)',
@@ -1595,17 +1742,37 @@ export default function StorageMap() {
               </div>
             )}
 
+            {/* Space Savings Floating HUD (Top-Left) */}
+            <SpaceSavingsHUD
+              telemetry={telemetry}
+              theme={theme}
+              onOpenAnalysisModal={() => setShowSavingsModal(true)}
+              onOpen75DemoModal={() => setShow75Modal(true)}
+              onFilterShared={() => {
+                setBlockFilter('shared')
+                const sharedIdx = gridBlocks.findIndex((s) => s === 3)
+                if (sharedIdx !== -1) setSelectedBlockId(sharedIdx)
+              }}
+              onFilterSnapshot={() => {
+                setBlockFilter('all')
+                const snapIdx = gridBlocks.findIndex((s) => s === 5)
+                if (snapIdx !== -1) setSelectedBlockId(snapIdx)
+              }}
+            />
+
             {/* Deduplicated Files Panel (Top-Right) */}
             <SharedBlocksPanel files={files} theme={theme} />
 
-            {/* Hard Drive Hardware Telemetry HUD (Bottom-Right) */}
-            <HardDriveHUD
-              activeBlockId={activeBlockId}
-              gridBlocks={gridBlocks}
-              files={files}
-              disk={telemetry?.disk}
-              theme={theme}
-            />
+            {/* Hard Drive Hardware Telemetry HUD (Bottom-Right, shown when no block is selected) */}
+            {selectedBlockId === null && (
+              <HardDriveHUD
+                activeBlockId={activeBlockId}
+                gridBlocks={gridBlocks}
+                files={files}
+                disk={telemetry?.disk}
+                theme={theme}
+              />
+            )}
 
             {/* Color Legend Overlay (Bottom-Left) */}
             <div
@@ -1654,6 +1821,17 @@ export default function StorageMap() {
             </div>
           </>
         )}
+
+        {/* ── Block Content & Data Payload Viewer (Floats on bottom-right when any block is clicked) ── */}
+        {selectedBlockId !== null && (
+          <BlockDataViewer
+            blockId={selectedBlockId}
+            onClose={() => setSelectedBlockId(null)}
+            onSelectBlock={(id) => setSelectedBlockId(id)}
+            telemetry={telemetry}
+            theme={theme}
+          />
+        )}
       </div>
 
       {/* 75% Partial Block Deduplication Modal */}
@@ -1666,6 +1844,26 @@ export default function StorageMap() {
           if (sharedBlocks.length > 0) setSelectedBlockId(sharedBlocks[0])
         }}
         theme={theme}
+      />
+
+      {/* Space Savings Comprehensive Analysis Modal */}
+      <SpaceSavingsModal
+        isOpen={showSavingsModal}
+        onClose={() => setShowSavingsModal(false)}
+        telemetry={telemetry}
+        theme={theme}
+        onHighlightShared={() => {
+          setShowSavingsModal(false)
+          setBlockFilter('shared')
+          const sharedIdx = gridBlocks.findIndex((s) => s === 3)
+          if (sharedIdx !== -1) setSelectedBlockId(sharedIdx)
+        }}
+        onHighlightSnapshot={() => {
+          setShowSavingsModal(false)
+          setBlockFilter('all')
+          const snapIdx = gridBlocks.findIndex((s) => s === 5)
+          if (snapIdx !== -1) setSelectedBlockId(snapIdx)
+        }}
       />
     </div>
   )

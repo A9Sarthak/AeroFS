@@ -479,9 +479,63 @@ class AeroFileSystem:
                     # Unique block belonging to a single active file
                     block_states.append(2)  # Unique Data Block (Green)
 
+        # Comprehensive Space Savings Telemetry (CAS + CoW + Snapshots)
+        active_logical_blocks = sum(len(f.block_ids) for f in self.files.values())
+        active_logical_bytes = sum(f.size for f in self.files.values())
+        active_unique_blocks = set(b for f in self.files.values() for b in f.block_ids)
+
+        cas_saved_blocks = max(0, active_logical_blocks - len(active_unique_blocks))
+        cas_saved_bytes = cas_saved_blocks * self.block_size
+
+        snap_logical_blocks = sum(len(sf.block_ids) for s in self.snapshots.values() for sf in s.inodes.values())
+        snap_logical_bytes = sum(sf.size for s in self.snapshots.values() for sf in s.inodes.values())
+        snap_unique_blocks = set(b for s in self.snapshots.values() for sf in s.inodes.values() for b in sf.block_ids)
+
+        snap_extra_physical_blocks = len(snap_unique_blocks - active_unique_blocks)
+        cow_saved_blocks = max(0, snap_logical_blocks - snap_extra_physical_blocks)
+        cow_saved_bytes = cow_saved_blocks * self.block_size
+
+        all_unique_data_blocks = active_unique_blocks.union(snap_unique_blocks)
+        total_logical_blocks = active_logical_blocks + snap_logical_blocks
+        total_logical_bytes = active_logical_bytes + snap_logical_bytes
+        total_physical_blocks = len(all_unique_data_blocks)
+        total_physical_bytes = total_physical_blocks * self.block_size
+
+        total_saved_blocks = max(0, total_logical_blocks - total_physical_blocks)
+        total_saved_bytes = total_saved_blocks * self.block_size
+
+        savings_ratio = round(total_logical_blocks / max(1, total_physical_blocks), 2) if total_physical_blocks > 0 else 1.0
+        savings_percent = round((total_saved_bytes / max(1, total_logical_bytes)) * 100, 2) if total_logical_bytes > 0 else 0.0
+
+        savings_stats = {
+            "total_logical_bytes": total_logical_bytes,
+            "total_logical_blocks": total_logical_blocks,
+            "total_physical_bytes": total_physical_bytes,
+            "total_physical_blocks": total_physical_blocks,
+            "total_saved_bytes": total_saved_bytes,
+            "total_saved_blocks": total_saved_blocks,
+            "savings_ratio": f"{savings_ratio}x",
+            "savings_percent": savings_percent,
+            "cas": {
+                "saved_bytes": cas_saved_bytes,
+                "saved_blocks": cas_saved_blocks,
+                "dedup_hits": self.dedup.dedup_hits,
+                "shared_blocks_count": len([b for b, cnt in file_block_counts.items() if cnt >= 2]),
+            },
+            "cow": {
+                "saved_bytes": cow_saved_bytes,
+                "saved_blocks": cow_saved_blocks,
+                "snapshot_count": len(self.snapshots),
+                "snapshot_logical_bytes": snap_logical_bytes,
+                "snapshot_logical_blocks": snap_logical_blocks,
+                "snapshot_extra_physical_blocks": snap_extra_physical_blocks,
+            }
+        }
+
         return {
             "disk": disk_stats,
             "dedup": dedup_stats,
+            "savings": savings_stats,
             "file_count": len(self.files),
             "snapshot_count": len(self.snapshots),
             "grid_blocks": block_states,
@@ -507,10 +561,90 @@ class AeroFileSystem:
         ]
 
         actual_hash = None
-        if is_allocated:
+        data_text = ""
+        hex_dump = ""
+        is_printable = False
+        raw_bytes_len = 0
+
+        # File chunk breakdown: which chunk/part index within each file is this block?
+        file_chunks = []
+        for fname in referencing_files:
+            f = self.files.get(fname)
+            if f:
+                indices = [i for i, bid in enumerate(f.block_ids) if bid == block_id]
+                for idx in indices:
+                    file_chunks.append({
+                        "file_name": fname,
+                        "chunk_index": idx,
+                        "chunk_part": idx + 1,
+                        "total_chunks": len(f.block_ids),
+                        "file_size": f.size,
+                    })
+
+        if is_allocated or is_metadata:
             import hashlib
             data = self.dev.read_block(block_id)
+            raw_bytes_len = len(data)
             actual_hash = hashlib.sha256(data).hexdigest()
+
+            if is_metadata:
+                if block_id == 0:
+                    data_text = f"[SUPERBLOCK]\nMagic: {self.dev.superblock.magic.decode('ascii', errors='replace')}\nBlock Size: {self.dev.superblock.block_size} bytes\nTotal Blocks: {self.dev.superblock.total_blocks}\nData Start: Block #{self.dev.superblock.data_start_block}"
+                    is_printable = True
+                else:
+                    data_text = f"[ALLOCATION BITMAP - Block #{block_id}]\nTracking 4,096 physical block allocation states (1 bit per sector)."
+                    is_printable = True
+            else:
+                trimmed = data.rstrip(b"\x00")
+                if trimmed:
+                    try:
+                        data_text = trimmed.decode("utf-8")
+                        is_printable = True
+                    except UnicodeDecodeError:
+                        data_text = trimmed.decode("utf-8", errors="replace")
+                        is_printable = False
+                else:
+                    data_text = "[All Zero Bytes (Clean Padded Block)]"
+                    is_printable = True
+
+            # Generate formatted Hex Dump (first 256 bytes)
+            preview_bytes = data[:256]
+            hex_lines = []
+            for offset in range(0, len(preview_bytes), 16):
+                chunk = preview_bytes[offset:offset + 16]
+                hex_part = " ".join(f"{b:02x}" for b in chunk).ljust(48)
+                ascii_part = "".join(chr(b) if 32 <= b <= 126 else "." for b in chunk)
+                hex_lines.append(f"{offset:04x}: {hex_part} | {ascii_part}")
+            hex_dump = "\n".join(hex_lines)
+            if len(data) > 256:
+                hex_dump += f"\n... [{len(data) - 256} additional bytes in 4,096-byte sector]"
+
+        # Sharing classification & educational explanation
+        if is_metadata:
+            sharing_status = "metadata"
+            sharing_label = "System Metadata (Superblock / Bitmap)"
+            sharing_explanation = "Reserved block storing filesystem geometry and allocation bitmaps."
+        elif not is_allocated:
+            sharing_status = "free"
+            sharing_label = "Free Sector"
+            sharing_explanation = "Unallocated sector available for Best-Fit contiguous extent placement."
+        elif len(referencing_files) >= 2:
+            sharing_status = "shared"
+            sharing_label = f"CAS Deduplicated ({len(referencing_files)} Files Share this Block)"
+            sharing_explanation = f"SHARED CONTENT: This 4KB chunk is 100% identical between {', '.join(referencing_files)}. Both files point to this single physical sector on disk via SHA-256 CAS deduplication (Refcount: {refcount})."
+        elif len(referencing_snaps) >= 1 and len(referencing_files) >= 1:
+            sharing_status = "snapshot_shared"
+            sharing_label = f"Snapshot Protected (Active in {referencing_files[0]} + {len(referencing_snaps)} Snapshot(s))"
+            sharing_explanation = f"SHARED VIA COW SNAPSHOT: Referenced by live file '{referencing_files[0]}' and frozen point-in-time snapshot(s) ({', '.join(referencing_snaps)}). Modifying the live file will trigger Copy-on-Write without altering this block."
+        elif len(referencing_snaps) >= 1 and len(referencing_files) == 0:
+            sharing_status = "snapshot_only"
+            sharing_label = f"Snapshot Extent (Held by {len(referencing_snaps)} Snapshot(s))"
+            sharing_explanation = f"HISTORICAL SNAPSHOT SECTOR: Preserved on disk exclusively by historical snapshot(s) ({', '.join(referencing_snaps)}). The active file was either deleted or modified via Copy-on-Write."
+        else:
+            sharing_status = "unique"
+            sharing_label = "Unique Data (1 File Only)"
+            owner = referencing_files[0] if referencing_files else "Unknown"
+            sharing_explanation = f"UNIQUE DATA: This 4KB chunk belongs exclusively to '{owner}' (Refcount: 1). Its SHA-256 fingerprint is not shared with any other file."
 
         return {
             "block_id": block_id,
@@ -522,7 +656,15 @@ class AeroFileSystem:
             "actual_hash": actual_hash,
             "hash_matches": (expected_hash == actual_hash) if (expected_hash and actual_hash) else True,
             "referencing_files": referencing_files,
-            "referencing_snapshots": referencing_snaps
+            "referencing_snapshots": referencing_snaps,
+            "file_chunks": file_chunks,
+            "sharing_status": sharing_status,
+            "sharing_label": sharing_label,
+            "sharing_explanation": sharing_explanation,
+            "data_text": data_text,
+            "hex_dump": hex_dump,
+            "is_printable": is_printable,
+            "bytes_length": raw_bytes_len,
         }
 
     def inspect_file(self, filename: str) -> Dict[str, Any]:
